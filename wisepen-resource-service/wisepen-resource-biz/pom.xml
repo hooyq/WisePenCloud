@@ -48,6 +48,14 @@
             <artifactId>spring-boot-starter-data-mongodb</artifactId>
         </dependency>
 
+        <!-- 全文搜索：Spring Data Elasticsearch starter
+             已自带 co.elastic.clients:elasticsearch-java（新版 ES 8 Java 客户端），
+             NativeQuery / HighlightQuery / JacksonJsonpMapper 等类型均由此引入。 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-elasticsearch</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.kafka</groupId>
             <artifactId>spring-kafka</artifactId>
