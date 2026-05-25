@@ -9,9 +9,11 @@ import com.oriole.wisepen.resource.domain.dto.req.ResourceRenameRequest;
 import com.oriole.wisepen.resource.domain.dto.req.ResourceUpdateActionPermissionRequest;
 import com.oriole.wisepen.resource.domain.dto.req.ResourceUpdateTagsRequest;
 import com.oriole.wisepen.resource.domain.dto.res.ResourceItemResponse;
+import com.oriole.wisepen.resource.domain.entity.ResourceItemEntity;
 import com.oriole.wisepen.resource.enums.ResourceSortBy;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface IResourceService {
 
@@ -40,7 +42,7 @@ public interface IResourceService {
 
     void afterTagNodeDeleted(List<String> deletedTagIds, Boolean isPersonalTag, Boolean isPathTag);
 
-    void calculateResourceGroupAcl(String resourceId);
+    Optional<ResourceItemEntity> calculateResourceGroupAcl(String resourceId);
 
     // ToService：增加、移除、更新资源；检查特定资源的权限
 

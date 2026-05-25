@@ -18,11 +18,7 @@ import com.oriole.wisepen.resource.domain.dto.res.ResourceItemResponse;
 import com.oriole.wisepen.resource.domain.entity.GroupResConfigEntity;
 import com.oriole.wisepen.resource.domain.entity.ResourceItemEntity;
 import com.oriole.wisepen.resource.domain.entity.TagEntity;
-import com.oriole.wisepen.resource.enums.ResourceAccessRole;
-import com.oriole.wisepen.resource.enums.ResourceAction;
-import com.oriole.wisepen.resource.enums.ResourceSortBy;
-import com.oriole.wisepen.resource.enums.AclGrantMode;
-import com.oriole.wisepen.resource.enums.ResourceMountMode;
+import com.oriole.wisepen.resource.enums.*;
 import com.oriole.wisepen.resource.event.TagChangedEvent;
 import com.oriole.wisepen.resource.event.TagDeletedEvent;
 import com.oriole.wisepen.resource.event.TagTrashedEvent;
@@ -34,10 +30,10 @@ import com.oriole.wisepen.resource.repository.ResourceInteractionInfoRepository;
 import com.oriole.wisepen.resource.repository.ResourceItemRepository;
 import com.oriole.wisepen.resource.repository.ResourceUserInteractRecordRepository;
 import com.oriole.wisepen.resource.repository.TagRepository;
-import com.oriole.wisepen.resource.enums.FileOrganizationLogic;
 import com.oriole.wisepen.resource.mq.IEventPublisher;
 import com.oriole.wisepen.resource.service.IGroupResService;
 import com.oriole.wisepen.resource.service.IResourceService;
+import com.oriole.wisepen.resource.service.ISearchSyncService;
 import com.oriole.wisepen.resource.service.ITagService;
 import com.oriole.wisepen.user.api.domain.base.UserDisplayBase;
 import com.oriole.wisepen.user.api.feign.RemoteUserService;
@@ -81,6 +77,7 @@ public class ResourceServiceImpl implements IResourceService {
 
     private final IGroupResService groupResService;
     private final ITagService tagService;
+    private final ISearchSyncService searchSyncService;
 
     private final RemoteUserService remoteUserService;
 
@@ -142,6 +139,8 @@ public class ResourceServiceImpl implements IResourceService {
         String oldName = entity.getResourceName();
         entity.setResourceName(req.getNewName());
         resourceItemRepository.save(entity);
+        searchSyncService.syncResourceMetadata(entity, EnumSet.of(UpsertField.RESOURCE_NAME));
+
         log.info("resource renamed resourceId={} oldName={} newName={}",
                 entity.getResourceId(), oldName, req.getNewName());
     }
@@ -531,6 +530,8 @@ public class ResourceServiceImpl implements IResourceService {
         }
         // 同步初始化互动信息记录
         resourceInteractionInfoRepository.save(new ResourceInteractionInfoEntity(entity.getResourceId()));
+        // 同步初始化资源搜索记录
+        searchSyncService.syncResourceMetadata(entity, EnumSet.of(UpsertField.RESOURCE_TYPE, UpsertField.RESOURCE_NAME, UpsertField.ACL));
 
         log.info("resource created resourceId={} ownerId={} resourceType={} pathTagId={}",
                 entity.getResourceId(), dto.getOwnerId(), dto.getResourceType(), dto.getPathTagId());
@@ -580,6 +581,10 @@ public class ResourceServiceImpl implements IResourceService {
 
             log.info("resources deleted mode=hard count={} resourceIds={}",
                     deletedCount, summarizeIds(resourceIds));
+            // 删除索引
+            for (ResourceItemEntity resource : expiredResources) {
+                searchSyncService.deleteResourceIndex(resource.getResourceId());
+            }
             // 发送 Kafka 广播，通知文件存储等下游微服务抹除物理文件
             eventPublisher.publishResDeletedEvent(expiredResources);
         }
@@ -695,7 +700,7 @@ public class ResourceServiceImpl implements IResourceService {
     }
 
     @Override
-    public void calculateResourceGroupAcl(String resourceId) {
+    public Optional<ResourceItemEntity> calculateResourceGroupAcl(String resourceId) {
         long start = System.currentTimeMillis();
         log.debug("aclRecalc started resourceId={}", resourceId);
         // 获取资源绑定记录
@@ -704,7 +709,7 @@ public class ResourceServiceImpl implements IResourceService {
 
         if (bindEntity == null) {
             log.warn("aclRecalc skipped resourceId={}", resourceId);
-            return;
+            return Optional.empty();
         }
 
         Map<String, ComputedGroupAcl> computedGroupAcls = new HashMap<>();
@@ -714,10 +719,20 @@ public class ResourceServiceImpl implements IResourceService {
                 if (groupBind.getTagIds() == null || groupBind.getTagIds().isEmpty()) continue;
                 if (groupBind.getGroupId().startsWith(ResourceConstants.PERSONAL_GROUP_PREFIX)) continue; // 个人Tag不参与计算Acl
 
-                // 提取首标并查询
-                String primaryTagId = groupBind.getTagIds().getFirst();
-                TagEntity primaryTag = tagRepository.findById(primaryTagId).orElse(null);
+                // 查询所有 Tag 详情
+                List<TagEntity> tags = tagRepository.findAllById(groupBind.getTagIds());
+
+                // Tag 详情传递至 groupBind，供后续使用
+                // TODO: groupBind.tags 暂无后续使用
+                groupBind.setTags(tags);
+
+                // 提取首标
+                TagEntity primaryTag = tags.stream().filter(
+                        tagEntity -> tagEntity.getTagId().equals(groupBind.getTagIds().getFirst())
+                ).findFirst().orElse(null);
+
                 if (primaryTag == null) continue;
+
 
                 Integer defaultActions = groupResConfigRepository.findByGroupId(groupBind.getGroupId())
                         .map(GroupResConfigEntity::getDefaultMemberActionsMask)
@@ -758,6 +773,10 @@ public class ResourceServiceImpl implements IResourceService {
         mongoTemplate.updateFirst(query, update, ResourceItemEntity.class);
         log.debug("aclRecalc finished resourceId={} groupCount={} costMs={}",
                 resourceId, computedGroupAcls.size(), System.currentTimeMillis() - start);
+
+        bindEntity.setComputedGroupAcls(computedGroupAcls);
+        bindEntity.setUpdateTime(LocalDateTime.now());
+        return Optional.of(bindEntity);
     }
 
     @Override
