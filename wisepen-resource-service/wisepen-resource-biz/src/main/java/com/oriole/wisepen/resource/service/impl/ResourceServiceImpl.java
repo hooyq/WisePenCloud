@@ -13,7 +13,6 @@ import com.oriole.wisepen.resource.domain.GroupTagBind;
 import com.oriole.wisepen.resource.domain.dto.*;
 import com.oriole.wisepen.resource.domain.dto.req.ResourceRenameRequest;
 import com.oriole.wisepen.resource.domain.dto.req.ResourceUpdateActionPermissionRequest;
-import com.oriole.wisepen.resource.domain.dto.req.ResourceUpdateTagsRequest;
 import com.oriole.wisepen.resource.domain.dto.res.ResourceItemResponse;
 import com.oriole.wisepen.resource.domain.entity.GroupResConfigEntity;
 import com.oriole.wisepen.resource.domain.entity.ResourceItemEntity;
@@ -145,71 +144,14 @@ public class ResourceServiceImpl implements IResourceService {
                 entity.getResourceId(), oldName, req.getNewName());
     }
 
-    @Override
-    public void updateResourceTags(ResourceUpdateTagsRequest req) {
-        String resourceId = req.getResourceId();
-        String groupId = req.getGroupId();
-        List<String> tagIds = req.getTagIds();
-
-        ResourceItemEntity entity = resourceItemRepository.findById(resourceId)
-                .orElseThrow(() -> new ServiceException(ResourceError.RESOURCE_NOT_FOUND));
-
-        List<GroupTagBind> groupBinds = entity.getGroupBinds();
-
+    private List<GroupTagBind> updateResourceGroupBinds(List<GroupTagBind> groupBinds, String groupId, List<String> tagIds) {
         if (groupBinds == null) {
             groupBinds = new ArrayList<>();
-            entity.setGroupBinds(groupBinds);
         }
-
-        boolean isTrashed = false;
-
         if (tagIds == null || tagIds.isEmpty()) {
-            // 个人空间的资源不允许被清空标签
-            if (groupId != null && groupId.startsWith(ResourceConstants.PERSONAL_GROUP_PREFIX)) {
-                throw new ServiceException(ResourceError.CANNOT_BIND_RESOURCE_TO_MULTIPLE_PATH_NODES);
-            }
             // 本次操作清空了该组所有标签，从列表中移除该组
             groupBinds.removeIf(bind -> bind.getGroupId().equals(groupId));
         } else {
-            // 执行常规的覆盖 (Update)/新增 (Upsert) 操作
-
-            // 检查Tag是否存在
-            List<TagEntity> validTags = tagRepository.findAllById(req.getTagIds());
-            if (validTags.size() != req.getTagIds().size()) {
-                throw new ServiceException(ResourceError.TAG_NODE_NOT_FOUND); // 包含无效的标签ID
-            }
-            boolean allBelongToGroup = validTags.stream().allMatch(tag -> groupId.equals(tag.getGroupId()));
-            if (!allBelongToGroup) {
-                throw new ServiceException(ResourceError.TAG_NODE_NOT_FOUND); // 包含无效的标签ID（实际上是跨空间越权挂载，但不返回真实原因）
-            }
-
-            if (groupId.startsWith(ResourceConstants.PERSONAL_GROUP_PREFIX)) {
-                // 校验个人空间：必须有且仅有 1 个 isPath = true 的节点
-                List<TagEntity> pathTags =  validTags.stream().filter(tag -> Boolean.TRUE.equals(tag.getIsPath())).toList();
-                if (pathTags.size() != 1) {
-                    throw new ServiceException(ResourceError.CANNOT_BIND_RESOURCE_TO_MULTIPLE_PATH_NODES);
-                }
-                // 首位 (Index 0) 的节点必须是这个唯一的 isPath 节点
-                if (!tagIds.getFirst().equals(pathTags.getFirst().getTagId())) {
-                    throw new ServiceException(ResourceError.CANNOT_PLACE_RESOURCE_PATH_TAG_AFTER_TAGS);
-                }
-
-                // 检查目标路径是否属于回收站
-                if (tagService.isNodeInTrash(groupId, pathTags.getFirst().getTagId()) != ITagService.TagType.NOT_IN_TRASH) {
-                    isTrashed = true;
-                    groupBinds.removeIf(bind -> !bind.getGroupId().startsWith(ResourceConstants.PERSONAL_GROUP_PREFIX));
-                    entity.setOverrideGrantedActionsMask(null);
-                    entity.setSpecifiedUsersGrantedActionsMask(null);
-                    entity.setComputedGroupAcls(null);
-                }
-            } else {
-                // 小组 FOLDER 模式：同一小组内每个资源至多挂载一个标签
-                FileOrganizationLogic logic = groupResService.getFileOrgLogic(groupId);
-                if (FileOrganizationLogic.FOLDER == logic && tagIds.size() > 1) {
-                    throw new ServiceException(ResourceError.CANNOT_BIND_MULTIPLE_RESOURCE_TAGS_IN_FOLDER_MODE);
-                }
-            }
-
             // 寻找该实体中是否已经存在当前 groupId 的绑定记录
             boolean groupFound = false;
             for (GroupTagBind groupBind : groupBinds) {
@@ -222,50 +164,97 @@ public class ResourceServiceImpl implements IResourceService {
             }
             // 如果之前这个资源没有在这个组下绑过标签，则新增一个组绑定对象
             if (!groupFound) {
-                entity.getGroupBinds().add(GroupTagBind.builder().groupId(groupId).tagIds(tagIds).build());
+                groupBinds.add(GroupTagBind.builder().groupId(groupId).tagIds(tagIds).build());
             }
         }
-        resourceItemRepository.save(entity);
-        log.info("resourceTags changed resourceId={} groupId={} tagCount={}",
-                entity.getResourceId(), groupId, tagIds == null ? 0 : tagIds.size());
-
-        if (groupId != null && groupId.startsWith(ResourceConstants.PERSONAL_GROUP_PREFIX)) {
-            // 个人空间的普通路径变更不需要发通知，但如果是“进入回收站导致组分享被剥夺”则必须通知下游
-            if (isTrashed) {
-                eventPublisher.publishAclRecalculateEvent(entity.getResourceId(), "STRIP_GROUP_PERMISSION");
-            }
-            return;
-        }
-        eventPublisher.publishAclRecalculateEvent(entity.getResourceId(), "RESOURCE_TAGS_CHANGED");
+        return groupBinds;
     }
 
     @Override
-    public void assertResourceMountPermission(String userId, String groupId, GroupRoleType groupRole, List<String> tagIds) {
-        if (!StringUtils.hasText(groupId) || groupId.startsWith(ResourceConstants.PERSONAL_GROUP_PREFIX)) {
-            return;
-        }
-        if (groupRole == GroupRoleType.ADMIN || groupRole == GroupRoleType.OWNER) {
-            return;
-        }
+    public void updatePersonalResourceTags (String resourceId, String groupId, List<String> tagIds) {
+        ResourceItemEntity entity = resourceItemRepository.findById(resourceId)
+                .orElseThrow(() -> new ServiceException(ResourceError.RESOURCE_NOT_FOUND));
+
+        boolean isTrashed = false;
+
         if (tagIds == null || tagIds.isEmpty()) {
-            return;
+            // 个人空间的资源不允许被清空标签
+            throw new ServiceException(ResourceError.CANNOT_BIND_RESOURCE_TO_MULTIPLE_PATH_NODES);
         }
 
+        // 查找并检查Tag
+        List<TagEntity> validTags = findAndValidateTags(groupId, tagIds);
+        List<TagEntity> pathTags =  validTags.stream().filter(tag -> Boolean.TRUE.equals(tag.getIsPath())).toList();
+        // 最多只能有一个 isPath 节点
+        if (pathTags.size() != 1) throw new ServiceException(ResourceError.CANNOT_BIND_RESOURCE_TO_MULTIPLE_PATH_NODES);
+        // 首位 (Index 0) 的节点必须是这个唯一的 isPath 节点
+        if (!tagIds.getFirst().equals(pathTags.getFirst().getTagId())) throw new ServiceException(ResourceError.CANNOT_PLACE_RESOURCE_PATH_TAG_AFTER_TAGS);
+
+        // 检查目标路径是否属于回收站
+        if (tagService.isNodeInTrash(groupId, pathTags.getFirst().getTagId()) != ITagService.TagType.NOT_IN_TRASH) {
+            isTrashed = true;
+            entity.getGroupBinds().removeIf(bind -> !bind.getGroupId().startsWith(ResourceConstants.PERSONAL_GROUP_PREFIX));
+            entity.setOverrideGrantedActionsMask(null);
+            entity.setSpecifiedUsersGrantedActionsMask(null);
+            entity.setComputedGroupAcls(null);
+        }
+
+        entity.setGroupBinds(updateResourceGroupBinds(entity.getGroupBinds(), groupId, tagIds));
+        resourceItemRepository.save(entity);
+        log.info("resourceTags changed resourceId={} groupId={} tagCount={}",
+                entity.getResourceId(), groupId, tagIds.size());
+        if (isTrashed) {
+            eventPublisher.publishAclRecalculateEvent(entity.getResourceId(), "STRIP_GROUP_PERMISSION");
+        }
+    }
+
+    @Override
+    public void updateGroupResourceTags(String resourceId, String groupId, String userId, GroupRoleType groupRole, List<String> tagIds) {
+        ResourceItemEntity entity = resourceItemRepository.findById(resourceId)
+                .orElseThrow(() -> new ServiceException(ResourceError.RESOURCE_NOT_FOUND));
+
+        if (tagIds != null && !tagIds.isEmpty()) {
+            // 查找并检查Tag
+            List<TagEntity> validTags = findAndValidateTags(groupId, tagIds);
+
+            // 小组 FOLDER 模式：同一小组内每个资源至多挂载一个标签
+            FileOrganizationLogic logic = groupResService.getFileOrgLogic(groupId);
+            if (FileOrganizationLogic.FOLDER == logic && tagIds.size() > 1)
+                throw new ServiceException(ResourceError.CANNOT_BIND_MULTIPLE_RESOURCE_TAGS_IN_FOLDER_MODE);
+
+            // 检查是否有权限挂载
+            if (groupRole != GroupRoleType.ADMIN && groupRole != GroupRoleType.OWNER) {
+                checkGroupMemberTagMountPermission(userId, validTags);
+            }
+        }
+
+        entity.setGroupBinds(updateResourceGroupBinds(entity.getGroupBinds(), groupId, tagIds));
+        resourceItemRepository.save(entity);
+        log.info("resourceTags changed resourceId={} groupId={} tagCount={}",
+                entity.getResourceId(), groupId, tagIds == null ? 0 : tagIds.size());
+        eventPublisher.publishAclRecalculateEvent(entity.getResourceId(), "RESOURCE_TAGS_CHANGED");
+    }
+
+    private List<TagEntity> findAndValidateTags(String groupId, List<String> tagIds) {
         List<TagEntity> tags = tagRepository.findAllById(tagIds);
+        if (tags.size() != tagIds.size()) {
+            throw new ServiceException(ResourceError.TAG_NODE_NOT_FOUND);
+        }
+        boolean allBelongToGroup = tags.stream().allMatch(tag -> groupId.equals(tag.getGroupId()));
+        if (!allBelongToGroup) {
+            throw new ServiceException(ResourceError.TAG_NODE_NOT_FOUND);
+        }
+        return tags;
+    }
 
-        Integer defaultActions = groupResConfigRepository.findByGroupId(groupId)
-                .map(GroupResConfigEntity::getDefaultMemberActionsMask)
-                .orElse(ResourceAction.DEFAULT_MEMBER_ACTIONS);
-
+    public void checkGroupMemberTagMountPermission(String userId, List<TagEntity> tags) {
         for (TagEntity tag : tags) {
-            ResolvedTagPermission resolved = resolveTagPermission(tag, defaultActions);
-            boolean canMount = (resolved.resourceMountMode == ResourceMountMode.ALL ||
-                    (resolved.resourceMountMode == ResourceMountMode.WHITELIST && resolved.resourceMountSpecifiedUsers.contains(userId)) ||
-                    (resolved.resourceMountMode == ResourceMountMode.BLACKLIST && !resolved.resourceMountSpecifiedUsers.contains(userId)));
+            ResolvedTagPermission resolved = resolveTagMountConfig(tag);
+            boolean canMount = (resolved.tagMountPermissionScope == AccessControlScope.ALL ||
+                    (resolved.tagMountPermissionScope == AccessControlScope.WHITELIST && resolved.tagMountSpecifiedUsers.contains(userId)) ||
+                    (resolved.tagMountPermissionScope == AccessControlScope.BLACKLIST && !resolved.tagMountSpecifiedUsers.contains(userId)));
             if (!canMount) {
-                log.warn("resource mount denied userId={} groupId={} tagId={} mode={}",
-                        userId, groupId, tag.getTagId(), resolved.resourceMountMode);
-                throw new ServiceException(ResourceError.TAG_MOUNT_DENIED);
+                throw new ServiceException(ResourceError.BIND_RESOURCE_TO_TAG_NODE_DENIED);
             }
         }
     }
@@ -517,11 +506,7 @@ public class ResourceServiceImpl implements IResourceService {
                     dto.getPathTagId();
             List<String> targetTagIds = Collections.singletonList(pathTagID);
 
-            ResourceUpdateTagsRequest bindReq = new ResourceUpdateTagsRequest();
-            bindReq.setResourceId(entity.getResourceId());
-            bindReq.setGroupId(ResourceConstants.PERSONAL_GROUP_PREFIX + dto.getOwnerId());
-            bindReq.setTagIds(targetTagIds);
-            this.updateResourceTags(bindReq);
+            this.updatePersonalResourceTags(entity.getResourceId(), ResourceConstants.PERSONAL_GROUP_PREFIX + dto.getOwnerId(), targetTagIds);
         } catch (Exception e) {
             // 创建资源失败，回滚
             resourceItemRepository.deleteById(entity.getResourceId());
@@ -737,16 +722,16 @@ public class ResourceServiceImpl implements IResourceService {
                 Integer defaultActions = groupResConfigRepository.findByGroupId(groupBind.getGroupId())
                         .map(GroupResConfigEntity::getDefaultMemberActionsMask)
                         .orElse(ResourceAction.DEFAULT_MEMBER_ACTIONS);
-                ResolvedTagPermission resolved = resolveTagPermission(primaryTag, defaultActions);
+                ResolvedTagPermission resolved = resolveTagAclGrantConfig(primaryTag, defaultActions);
 
                 // 如果资源自身有覆盖权限，则优先使用覆盖权限作为基础分发掩码
                 Integer effectiveMask = bindEntity.getOverrideGrantedActionsMask() != null
                         ? bindEntity.getOverrideGrantedActionsMask()
-                        : resolved.grantedActionsMask;
+                        : resolved.taggedResourceGrantedActionsMask;
 
-                // 将 AclGrantMode 编译为 BaseMask 和 UserMasks
+                // 将 TaggedResourceAclGrantScope 编译为 BaseMask 和 UserMasks
                 ComputedGroupAcl computed = new ComputedGroupAcl();
-                switch (resolved.aclGrantMode) {
+                switch (resolved.taggedResourceAclGrantScope) {
                     case ALL:
                         computed.setBaseMask(effectiveMask);
                         break;
@@ -755,11 +740,11 @@ public class ResourceServiceImpl implements IResourceService {
                         break;
                     case WHITELIST:
                         computed.setBaseMask(0);
-                        resolved.aclGrantSpecifiedUsers.forEach(uid -> computed.getUserMasks().put(uid, effectiveMask));
+                        resolved.taggedResourceAclGrantSpecifiedUsers.forEach(uid -> computed.getUserMasks().put(uid, effectiveMask));
                         break;
                     case BLACKLIST:
                         computed.setBaseMask(effectiveMask);
-                        resolved.aclGrantSpecifiedUsers.forEach(uid -> computed.getUserMasks().put(uid, 0));
+                        resolved.taggedResourceAclGrantSpecifiedUsers.forEach(uid -> computed.getUserMasks().put(uid, 0));
                         break;
                 }
                 computedGroupAcls.put(groupBind.getGroupId(), computed);
@@ -833,12 +818,12 @@ public class ResourceServiceImpl implements IResourceService {
                         .map(GroupResConfigEntity::getDefaultMemberActionsMask)
                         .orElse(ResourceAction.DEFAULT_MEMBER_ACTIONS);
 
-                ResolvedTagPermission resolved = resolveTagPermission(primaryTag, defaultActions);
+                ResolvedTagPermission resolved = resolveTagAclGrantConfig(primaryTag, defaultActions);
 
-                // 使用 AclGrantMode 判断用户是否能获取当前组的权限掩码
-                boolean isEligibleForMask = (resolved.aclGrantMode == AclGrantMode.ALL ||
-                    (resolved.aclGrantMode == AclGrantMode.WHITELIST && resolved.aclGrantSpecifiedUsers.contains(dto.getUserId().toString())) ||
-                    (resolved.aclGrantMode == AclGrantMode.BLACKLIST && !resolved.aclGrantSpecifiedUsers.contains(dto.getUserId().toString())));
+                // 使用 TaggedResourceAclGrantScope 判断用户是否能获取当前组的权限掩码
+                boolean isEligibleForMask = (resolved.taggedResourceAclGrantScope == AccessControlScope.ALL ||
+                    (resolved.taggedResourceAclGrantScope == AccessControlScope.WHITELIST && resolved.taggedResourceAclGrantSpecifiedUsers.contains(dto.getUserId().toString())) ||
+                    (resolved.taggedResourceAclGrantScope == AccessControlScope.BLACKLIST && !resolved.taggedResourceAclGrantSpecifiedUsers.contains(dto.getUserId().toString())));
 
                 if (isEligibleForMask) {
                     // 只要有一个组能下发权限，基础身份就是 Member
@@ -847,7 +832,7 @@ public class ResourceServiceImpl implements IResourceService {
                     }
                     permissionSources.add(groupBind.getGroupId());
                     // 应用标签策略
-                    actionsMask |= resolved.grantedActionsMask;
+                    actionsMask |= resolved.taggedResourceGrantedActionsMask;
                 }
             }
         }
@@ -880,24 +865,47 @@ public class ResourceServiceImpl implements IResourceService {
      */
     @Data
     private static class ResolvedTagPermission {
-        AclGrantMode aclGrantMode;
-        List<String> aclGrantSpecifiedUsers = Collections.emptyList();
-        Integer grantedActionsMask;
-        ResourceMountMode resourceMountMode;
-        List<String> resourceMountSpecifiedUsers = Collections.emptyList();
+        AccessControlScope taggedResourceAclGrantScope;
+        List<String> taggedResourceAclGrantSpecifiedUsers = Collections.emptyList();
+        Integer taggedResourceGrantedActionsMask;
+        AccessControlScope tagMountPermissionScope;
+        List<String> tagMountSpecifiedUsers = Collections.emptyList();
 
-        boolean isAclGrantModeResolved() { return aclGrantMode != null; }
-        boolean isActionsResolved() { return grantedActionsMask != null; }
-        boolean isResourceMountModeResolved() { return resourceMountMode != null; }
+        boolean isTaggedResourceAclGrantScope() { return taggedResourceAclGrantScope != null; }
+        boolean isTaggedResourceGrantedActionsMaskResolved() { return taggedResourceGrantedActionsMask != null; }
+        boolean isTagMountPermissionScopeResolved() { return tagMountPermissionScope != null; }
         boolean isFullyResolved() {
-            return isAclGrantModeResolved() && isActionsResolved() && isResourceMountModeResolved();
+            return isTaggedResourceAclGrantScope() && isTaggedResourceGrantedActionsMaskResolved() && isTagMountPermissionScopeResolved();
         }
+    }
+
+    private ResolvedTagPermission resolveTagAclGrantConfig(TagEntity node, Integer defaultActions) {
+        ResolvedTagPermission result = resolveTagPermission(node);
+        // 无论是根节点本身没配权限，还是遍历完所有祖先都没找到配置，都会在这里被安全拦截
+        // 如果未解析到动作权限，则使用默认动作权限
+        if (!result.isTaggedResourceGrantedActionsMaskResolved()) {
+            result.taggedResourceGrantedActionsMask = defaultActions;
+        }
+        // 如果未解析到 ACL授予模式，则使用默认ACL授予模式（ALL）
+        if (!result.isTaggedResourceAclGrantScope()) {
+            result.taggedResourceAclGrantScope = AccessControlScope.ALL;
+        }
+        return result;
+    }
+
+    private ResolvedTagPermission resolveTagMountConfig(TagEntity node) {
+        ResolvedTagPermission result = resolveTagPermission(node);
+        // 如果未解析到资源挂载模式，则使用默认挂载模式（ALL）
+        if (!result.isTagMountPermissionScopeResolved()) {
+            result.tagMountPermissionScope = AccessControlScope.ALL;
+        }
+        return result;
     }
 
     /**
      * 单次向上遍历标签树，分别捕获 ACL授予模式 和 授予动作掩码 最近的非空配置
      */
-    private ResolvedTagPermission resolveTagPermission(TagEntity node, Integer defaultActions) {
+    private ResolvedTagPermission resolveTagPermission(TagEntity node) {
         ResolvedTagPermission result = new ResolvedTagPermission();
 
         // 先尝试从当前节点捕获
@@ -927,21 +935,6 @@ public class ResourceServiceImpl implements IResourceService {
                 }
             }
         }
-
-        // 无论是根节点本身没配权限，还是遍历完所有祖先都没找到配置，都会在这里被安全拦截
-        // 如果未解析到动作权限，则使用默认动作权限
-        if (!result.isActionsResolved()) {
-            result.grantedActionsMask = defaultActions;
-        }
-        // 如果未解析到 ACL授予模式，则使用默认ACL授予模式（ALL）
-        if (!result.isAclGrantModeResolved()) {
-            result.aclGrantMode = AclGrantMode.ALL;
-        }
-        // 如果未解析到资源挂载模式，则使用默认挂载模式（ALL）
-        if (!result.isResourceMountModeResolved()) {
-            result.resourceMountMode = ResourceMountMode.ALL;
-        }
-
         return result;
     }
 
@@ -949,18 +942,18 @@ public class ResourceServiceImpl implements IResourceService {
      * 将节点的权限配置按维度填入聚合结果，仅填充尚未解析的维度
      */
     private void capturePermission(ResolvedTagPermission result, TagEntity node) {
-        if (!result.isAclGrantModeResolved() && node.getAclGrantMode() != null) {
-            result.aclGrantMode = node.getAclGrantMode();
-            result.aclGrantSpecifiedUsers = node.getAclGrantSpecifiedUsers() != null ? node.getAclGrantSpecifiedUsers()
-                    : Collections.emptyList();
+        if (!result.isTaggedResourceAclGrantScope() && node.getTaggedResourceAclGrantScope() != null) {
+            result.taggedResourceAclGrantScope = node.getTaggedResourceAclGrantScope();
+            result.taggedResourceAclGrantSpecifiedUsers = node.getTaggedResourceAclGrantSpecifiedUsers() != null ?
+                    node.getTaggedResourceAclGrantSpecifiedUsers() : Collections.emptyList();
         }
-        if (!result.isActionsResolved() && (node.getGrantedActionsMask() != null)) {
-            result.grantedActionsMask = node.getGrantedActionsMask();
+        if (!result.isTaggedResourceGrantedActionsMaskResolved() && (node.getTaggedResourceGrantedActionsMask() != null)) {
+            result.taggedResourceGrantedActionsMask = node.getTaggedResourceGrantedActionsMask();
         }
-        if (!result.isResourceMountModeResolved() && node.getResourceMountMode() != null) {
-            result.resourceMountMode = node.getResourceMountMode();
-                result.resourceMountSpecifiedUsers = node.getResourceMountSpecifiedUsers() != null ? node.getResourceMountSpecifiedUsers()
-                    : Collections.emptyList();
+        if (!result.isTagMountPermissionScopeResolved() && node.getTagMountPermissionScope() != null) {
+            result.tagMountPermissionScope = node.getTagMountPermissionScope();
+                result.tagMountSpecifiedUsers = node.getTagMountSpecifiedUsers() != null ?
+                        node.getTagMountSpecifiedUsers() : Collections.emptyList();
         }
     }
 }

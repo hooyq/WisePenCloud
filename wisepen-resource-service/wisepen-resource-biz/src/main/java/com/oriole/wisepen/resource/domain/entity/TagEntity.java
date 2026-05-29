@@ -1,8 +1,6 @@
 package com.oriole.wisepen.resource.domain.entity;
 
 import com.oriole.wisepen.resource.domain.base.TagInfoBase;
-import com.oriole.wisepen.resource.enums.AclGrantMode;
-import com.oriole.wisepen.resource.enums.ResourceMountMode;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -29,12 +27,6 @@ public class TagEntity extends TagInfoBase {
 
     // 祖先数组，例如：["root_id", "level1_id", "level2_id"], 用于子树查询和级联删除
     private List<String> ancestors;
-
-    // 权限配置
-    private AclGrantMode aclGrantMode;
-    private ResourceMountMode resourceMountMode;
-    private List<String> aclGrantSpecifiedUsers; // 配合白名单/黑名单使用的 userId 列表
-    private List<String> resourceMountSpecifiedUsers; // 资源挂载白名单/黑名单用户列表
 
     @CreatedDate
     private LocalDateTime createTime;

@@ -66,16 +66,16 @@ public class TagServiceImpl implements ITagService {
 
         BeanUtil.copyProperties(tagCreateRequest, entity);
         if (tagCreateRequest.getGrantedActions() != null) {
-            entity.setGrantedActionsMask(ResourceAction.actionsToPermissionCode(tagCreateRequest.getGrantedActions()));
+            entity.setTaggedResourceGrantedActionsMask(ResourceAction.actionsToPermissionCode(tagCreateRequest.getGrantedActions()));
         }
 
         if (groupID.startsWith(ResourceConstants.PERSONAL_GROUP_PREFIX)){
             // 个人组标签不能设置标签权限
-            entity.setAclGrantMode(null);
-            entity.setResourceMountMode(null);
-            entity.setAclGrantSpecifiedUsers(null);
-            entity.setResourceMountSpecifiedUsers(null);
-            entity.setGrantedActionsMask(null);
+            entity.setTaggedResourceAclGrantScope(null);
+            entity.setTaggedResourceAclGrantSpecifiedUsers(null);
+            entity.setTaggedResourceGrantedActionsMask(null);
+            entity.setTagMountPermissionScope(null);
+            entity.setTagMountSpecifiedUsers(null);
         }
 
         // 计算祖先数组 (核心逻辑)
@@ -147,8 +147,8 @@ public class TagServiceImpl implements ITagService {
         List<TagTreeResponse> tagTreeResponseList = allTags.stream().map(entity -> {
             TagTreeResponse tagTreeResponse = new TagTreeResponse();
             BeanUtil.copyProperties(entity, tagTreeResponse);
-            int grantedActionsMask = entity.getGrantedActionsMask() == null ? 0 : entity.getGrantedActionsMask();
-            tagTreeResponse.setGrantedActions(ResourceAction.permissionCodeToActions(grantedActionsMask));
+            int taggedResourceGrantedActionsMask = entity.getTaggedResourceGrantedActionsMask() == null ? 0 : entity.getTaggedResourceGrantedActionsMask();
+            tagTreeResponse.setGrantedActions(ResourceAction.permissionCodeToActions(taggedResourceGrantedActionsMask));
             tagTreeResponse.setChildren(new ArrayList<>());
             return tagTreeResponse;
         }).collect(Collectors.toList());
@@ -190,22 +190,11 @@ public class TagServiceImpl implements ITagService {
         }
 
         // 是否有权限变更
-        boolean isPermissionChanged = false;
-        if (tagUpdateRequest.getAclGrantMode() != null && !tagUpdateRequest.getAclGrantMode().equals(entity.getAclGrantMode())) {
-            isPermissionChanged = true;
-        }
-        if (tagUpdateRequest.getResourceMountMode() != null && !tagUpdateRequest.getResourceMountMode().equals(entity.getResourceMountMode())) {
-            isPermissionChanged = true;
-        }
-        if (tagUpdateRequest.getResourceMountSpecifiedUsers() != null && !tagUpdateRequest.getResourceMountSpecifiedUsers().equals(entity.getResourceMountSpecifiedUsers())) {
-            isPermissionChanged = true;
-        }
-        if (tagUpdateRequest.getAclGrantSpecifiedUsers() != null && !tagUpdateRequest.getAclGrantSpecifiedUsers().equals(entity.getAclGrantSpecifiedUsers())) {
-            isPermissionChanged = true;
-        }
-        if (tagUpdateRequest.getGrantedActions() != null && ResourceAction.actionsToPermissionCode(tagUpdateRequest.getGrantedActions()) != entity.getGrantedActionsMask()) {
-            isPermissionChanged = true;
-        }
+        boolean isPermissionChanged = (tagUpdateRequest.getTaggedResourceAclGrantScope() != null && !tagUpdateRequest.getTaggedResourceAclGrantScope().equals(entity.getTaggedResourceAclGrantScope()))
+                || (tagUpdateRequest.getTagMountPermissionScope() != null && !tagUpdateRequest.getTagMountPermissionScope().equals(entity.getTagMountPermissionScope())
+                || (tagUpdateRequest.getTaggedResourceAclGrantSpecifiedUsers() != null && !tagUpdateRequest.getTaggedResourceAclGrantSpecifiedUsers().equals(entity.getTaggedResourceAclGrantSpecifiedUsers()))
+                || (tagUpdateRequest.getTagMountSpecifiedUsers() != null && !tagUpdateRequest.getTagMountSpecifiedUsers().equals(entity.getTagMountSpecifiedUsers())
+                || (tagUpdateRequest.getGrantedActions() != null && ResourceAction.actionsToPermissionCode(tagUpdateRequest.getGrantedActions()) != entity.getTaggedResourceGrantedActionsMask())));
 
         if (groupID.startsWith(ResourceConstants.PERSONAL_GROUP_PREFIX) && isPermissionChanged){
             throw new ServiceException(CANNOT_SET_TAG_NODE_VISIBILITY); // 个人组标签不能设置标签权限
@@ -216,7 +205,7 @@ public class TagServiceImpl implements ITagService {
         // 更新基本信息和权限策略
         tagUpdateRequest.setIsPath(null); // IsPath始终不允许修改
         BeanUtil.copyProperties(tagUpdateRequest, entity, CopyOptions.create().ignoreNullValue());
-        entity.setGrantedActionsMask(ResourceAction.actionsToPermissionCode(tagUpdateRequest.getGrantedActions()));
+        entity.setTaggedResourceGrantedActionsMask(ResourceAction.actionsToPermissionCode(tagUpdateRequest.getGrantedActions()));
 
         tagRepository.save(entity);
 
@@ -224,8 +213,8 @@ public class TagServiceImpl implements ITagService {
                 groupID, targetId, nameChanged, isPermissionChanged);
 
         if (isPermissionChanged) {
-            log.info("tagPermission changed groupId={} tagId={} mode={}",
-                    groupID, targetId, entity.getAclGrantMode());
+            log.info("tagPermission changed groupId={} tagId={} taggedResourceAclGrantScope={} tagMountPermissionScope={}",
+                    groupID, targetId, entity.getTaggedResourceAclGrantScope(), entity.getTagMountPermissionScope());
             // 通知所有挂在它以及它子孙节点上的资源重新计算权限
             // 个人组标签不能设置标签权限，已经提前抛出错误
             afterTagNodeChanged(groupID, targetId, false);

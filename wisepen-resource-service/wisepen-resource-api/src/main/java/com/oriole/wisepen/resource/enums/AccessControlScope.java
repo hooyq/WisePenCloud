@@ -5,19 +5,18 @@ import com.fasterxml.jackson.annotation.JsonValue;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
-/**
- * 资源挂载权限模式枚举
- */
 @Getter
 @AllArgsConstructor
-public enum ResourceMountMode {
+public enum AccessControlScope {
 
-    ALL(0),        // 全员可挂载
-    ONLY_ADMIN(1), // 仅管理员可挂载
-    WHITELIST(2),  // 仅白名单内用户可挂载
-    BLACKLIST(3);  // 仅黑名单外用户可挂载
+    ALL(0, "ALL"),                // 全员
+    ONLY_ADMIN(1, "ONLY_ADMIN"),  // 仅管理员
+    WHITELIST(2, "WHITELIST"),    // 仅白名单内用户
+    BLACKLIST(3, "BLACKLIST");    // 仅黑名单外用户
 
     @EnumValue
     @JsonValue
     private final int code;
+
+    private final String value;
 }

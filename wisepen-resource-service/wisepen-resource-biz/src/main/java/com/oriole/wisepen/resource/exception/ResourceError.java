@@ -19,7 +19,6 @@ public enum ResourceError implements IResult {
     PARENT_TAG_NODE_NOT_FOUND(5112, new ResultKey(BusinessDomain.RESOURCE, ResourceSubject.TAG_NODE, ErrorReason.NOT_FOUND), "父标签节点不存在"),
     TAG_NODE_NAME_CONFLICT(5121, new ResultKey(BusinessDomain.RESOURCE, ResourceSubject.TAG_NODE, ErrorReason.CONFLICT),"同级目录下已存在同名标签节点"),
     CANNOT_SET_TAG_NODE_VISIBILITY(5131, new ResultKey(BusinessDomain.RESOURCE, ResourceSubject.TAG_NODE, ErrorReason.NOT_ALLOWED), "不能设置个人标签节点的可见范围"),
-    TAG_MOUNT_DENIED(5141, new ResultKey(BusinessDomain.RESOURCE, ResourceSubject.RESOURCE, ErrorReason.PERMISSION_DENIED),"无权挂载资源到该标签下"),
 
     // Tag路径节点相关异常
     CANNOT_USE_RESERVED_TAG_PATH_NODE_NAME(5211, new ResultKey(BusinessDomain.RESOURCE, ResourceSubject.TAG_PATH_NODE, ErrorReason.NOT_ALLOWED),"不能使用系统保留名称(/ 或 .Trash)作为路径节点名称"),
@@ -44,7 +43,8 @@ public enum ResourceError implements IResult {
     // 资源标签相关异常
     CANNOT_BIND_RESOURCE_TO_MULTIPLE_PATH_NODES(5511, new ResultKey(BusinessDomain.RESOURCE, ResourceSubject.RESOURCE_TAG, ErrorReason.NOT_ALLOWED),"不能为资源绑定多个路径节点"),
     CANNOT_PLACE_RESOURCE_PATH_TAG_AFTER_TAGS(5512, new ResultKey(BusinessDomain.RESOURCE, ResourceSubject.RESOURCE_TAG, ErrorReason.NOT_ALLOWED),"不能将资源路径标签放在普通标签之后"),
-    CANNOT_BIND_MULTIPLE_RESOURCE_TAGS_IN_FOLDER_MODE(5521, new ResultKey(BusinessDomain.RESOURCE, ResourceSubject.RESOURCE_TAG, ErrorReason.ALREADY_EXISTS),"该资源已绑定标签，文件夹模式下不能重复绑定");
+    CANNOT_BIND_MULTIPLE_RESOURCE_TAGS_IN_FOLDER_MODE(5521, new ResultKey(BusinessDomain.RESOURCE, ResourceSubject.RESOURCE_TAG, ErrorReason.ALREADY_EXISTS),"该资源已绑定标签，文件夹模式下不能重复绑定"),
+    BIND_RESOURCE_TO_TAG_NODE_DENIED(5531, new ResultKey(BusinessDomain.RESOURCE, ResourceSubject.RESOURCE_TAG, ErrorReason.PERMISSION_DENIED),"无权挂载资源到该标签下");
 
     private final Integer code;
     private final ResultKey key;

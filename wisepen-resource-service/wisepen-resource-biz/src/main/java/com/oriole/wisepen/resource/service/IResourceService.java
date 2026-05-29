@@ -23,9 +23,9 @@ public interface IResourceService {
     // ToUser：重命名、变更Tag、列出资源
     void renameResource(ResourceRenameRequest req);
 
-    void updateResourceTags(ResourceUpdateTagsRequest req);
+    void updatePersonalResourceTags (String resourceId, String groupId, List<String> tagIds);
 
-    void assertResourceMountPermission(String userId, String groupId, GroupRoleType groupRole, List<String> tagIds);
+    void updateGroupResourceTags(String resourceId, String groupId, String userId, GroupRoleType groupRole, List<String> tagIds);
 
     void updateResourceActionPermission(ResourceUpdateActionPermissionRequest req);
 

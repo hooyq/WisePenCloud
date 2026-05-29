@@ -3,8 +3,7 @@ package com.oriole.wisepen.resource.domain.dto.req;
 import com.oriole.wisepen.resource.constant.ResourceValidationMsg;
 import com.oriole.wisepen.resource.domain.base.TagSpaceBase;
 import com.oriole.wisepen.resource.enums.ResourceAction;
-import com.oriole.wisepen.resource.enums.AclGrantMode;
-import com.oriole.wisepen.resource.enums.ResourceMountMode;
+import com.oriole.wisepen.resource.enums.AccessControlScope;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -21,9 +20,10 @@ public class TagCreateRequest extends TagSpaceBase {
 
     private String tagDesc;
 
-    private AclGrantMode aclGrantMode;
-    private ResourceMountMode resourceMountMode;
-    private List<String> aclGrantSpecifiedUsers;
-    private List<String> resourceMountSpecifiedUsers;
+    private AccessControlScope taggedResourceAclGrantScope;
+    private List<String> taggedResourceAclGrantSpecifiedUsers;
     private List<ResourceAction> grantedActions;
+
+    private AccessControlScope tagMountPermissionScope;
+    private List<String> tagMountSpecifiedUsers;
 }

@@ -64,21 +64,29 @@ public class ResourceItemController {
     @PostMapping("/changeResourceTags")
     public R<Void> updateResourceTags(@Validated @RequestBody ResourceUpdateTagsRequest req) {
         String userId = SecurityContextHolder.getUserId().toString();
-        GroupRoleType groupRole = null;
         if (!StringUtils.hasText(req.getGroupId())) {
             // 资源所有者可以修改资源挂载的个人标签
             resourceService.assertResourceOwner(req.getResourceId(), userId);
-            req.setGroupId(ResourceConstants.PERSONAL_GROUP_PREFIX + userId);
+            resourceService.updatePersonalResourceTags(
+                    req.getResourceId(),
+                    ResourceConstants.PERSONAL_GROUP_PREFIX + userId,
+                    req.getTagIds()
+            );
         } else {
             // 资源所有者或小组管理员可以修改资源挂载的小组标签
-            groupRole = SecurityContextHolder.getGroupRole(Long.parseLong(req.getGroupId()));
+            GroupRoleType groupRole = SecurityContextHolder.getGroupRole(Long.parseLong(req.getGroupId()));
             if (groupRole != GroupRoleType.ADMIN && groupRole != GroupRoleType.OWNER) {
                 // 非小组管理员不能添加或修改资源挂载的小组标签，除非是资源所有者且拥有该标签的资源挂载权限
                 resourceService.assertResourceOwner(req.getResourceId(), userId);
-                resourceService.assertResourceMountPermission(userId, req.getGroupId(), groupRole, req.getTagIds());
             }
+            resourceService.updateGroupResourceTags(
+                    req.getResourceId(),
+                    userId,
+                    req.getGroupId(),
+                    groupRole,
+                    req.getTagIds()
+            );
         }
-        resourceService.updateResourceTags(req);
         return R.ok();
     }
 
