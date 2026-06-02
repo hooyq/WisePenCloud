@@ -35,10 +35,21 @@ public class NoteServiceImpl implements INoteService {
 
     @Override
     public String createNote(NoteCreateRequest request, String userId) {
-        // 远端请求创建 Note
-        ResourceCreateReqDTO resourceReq = ResourceCreateReqDTO.builder()
-                .resourceName(request.getTitle()).resourceType(ResourceType.NOTE).ownerId(userId).build();
-        String resourceId = remoteResourceService.createResource(resourceReq).getData();
+
+        // 向 resource 服务注册Note资源
+        String resourceId;
+        try {
+            resourceId = remoteResourceService.createResource(
+                    ResourceCreateReqDTO.builder()
+                            .resourceName(request.getTitle())
+                            .resourceType(ResourceType.NOTE)
+                            .ownerId(userId)
+                            .build()
+            ).getData();
+        } catch (Exception e) {
+            log.error("resource 服务注册 Note 资源失败", e);
+            throw new ServiceException(NoteError.NOTE_REGISTER_RESOURCE_FAILED, e.getMessage());
+        }
 
         List<Long> authors = new ArrayList<>();
         authors.add(Long.valueOf(userId));
