@@ -500,7 +500,7 @@ public class ResourceServiceImpl implements IResourceService {
         resourceItemRepository.save(entity);
         try {
             String pathTagID = dto.getPathTagId();
-            if (StringUtils.hasText(pathTagID)) {
+            if (!StringUtils.hasText(pathTagID)) {
                 pathTagID = tagRepository.findByGroupIdAndParentIdAndTagName(
                         ResourceConstants.PERSONAL_GROUP_PREFIX + dto.getOwnerId(), "0", ResourceConstants.ROOT_TAG_NAME
                 ).orElseThrow(() -> new ServiceException(ResourceError.TAG_NODE_NOT_FOUND)).getTagId();
