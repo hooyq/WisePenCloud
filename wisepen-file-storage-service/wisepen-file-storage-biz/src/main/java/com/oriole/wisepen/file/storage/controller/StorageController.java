@@ -47,28 +47,4 @@ public class StorageController {
         StorageRecordDTO record = storageService.uploadSmallFileProxy(file, scene, bizTag);
         return R.ok(record);
     }
-    /**
-     * 小文件代理上传，用于 Skill 的 Markdown、脚本和轻量配置文件。
-     *
-     * @param file   小文件
-     * @param scene  业务场景
-     * @param bizTag 业务隔离标识
-     */
-    @PostMapping("/smallFileUpload")
-    public R<StorageRecordDTO> uploadSmallFileProxy(
-            @RequestParam("file") MultipartFile file,
-            @RequestParam(value = "scene", defaultValue = "PRIVATE_SKILL_ASSET") StorageSceneEnum scene,
-            @RequestParam(value = "bizTag", required = false) String bizTag) {
-
-        String extension = FileUtil.extName(file.getOriginalFilename()).toLowerCase();
-        if (!Arrays.asList("md", "py", "txt", "json", "yaml", "yml", "toml").contains(extension)) {
-            throw new ServiceException(FileStorageError.CANNOT_SUPPORT_FILE_TYPE);
-        }
-        if (!EnumSet.of(PRIVATE_SKILL_ASSET, PRIVATE_DOC).contains(scene)) {
-            throw new ServiceException(FileStorageError.CANNOT_SUPPORT_FILE_STORAGE_SCENE);
-        }
-        StorageRecordDTO record = storageService.uploadSmallFileProxy(file, scene, bizTag);
-        return R.ok(record);
-    }
-
 }
