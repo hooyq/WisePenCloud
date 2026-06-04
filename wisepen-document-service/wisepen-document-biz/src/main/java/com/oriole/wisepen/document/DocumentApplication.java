@@ -13,7 +13,6 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @EnableScheduling
 @EnableDiscoveryClient
 @SpringBootApplication
-@EnableFeignClients(basePackages = "com.oriole.wisepen")
 @EnableMongoAuditing
 public class DocumentApplication {
     public static void main(String[] args) {
