@@ -64,6 +64,14 @@ services:
         aliases:
           - note-service
 
+  docs-service:
+    environment:
+      SPRING_CLOUD_INETUTILS_PREFERRED_NETWORKS: '^172\.28\.'
+    networks:
+      cloud-infra_cloud-net:
+        aliases:
+          - docs-service
+
 networks:
   cloud-infra_cloud-net:
     external: true
