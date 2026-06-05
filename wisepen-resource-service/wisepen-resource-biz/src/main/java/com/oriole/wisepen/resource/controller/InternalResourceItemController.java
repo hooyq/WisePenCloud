@@ -26,6 +26,7 @@ public class InternalResourceItemController implements RemoteResourceService {
 
     // 注册/新增资源摘要
     @Operation(summary = "内部注册资源")
+    @Log(title = "创建资源", businessType = BusinessType.INSERT)
     @PostMapping("/addRes")
     public R<String> createResource(@Validated @RequestBody ResourceCreateReqDTO dto) {
         String resourceId = resourceService.createResourceItem(dto);

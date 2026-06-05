@@ -44,6 +44,7 @@ public class NoteController {
     private final RemoteUserService remoteUserService;
 
     @Operation(summary = "创建笔记")
+    @Log(title = "创建笔记", businessType = BusinessType.INSERT)
     @PostMapping("/addNote")
     public R<String> createNote(@Validated @RequestBody NoteCreateRequest request) {
         String userId = SecurityContextHolder.getUserId().toString();

@@ -2,7 +2,9 @@ package com.oriole.wisepen.document.controller;
 
 import com.oriole.wisepen.common.core.context.SecurityContextHolder;
 import com.oriole.wisepen.common.core.domain.R;
+import com.oriole.wisepen.common.core.domain.enums.BusinessType;
 import com.oriole.wisepen.common.core.exception.ServiceException;
+import com.oriole.wisepen.common.log.annotation.Log;
 import com.oriole.wisepen.common.security.annotation.CheckLogin;
 import com.oriole.wisepen.document.api.domain.base.DocumentInfoBase;
 import com.oriole.wisepen.document.api.domain.base.DocumentStatus;
@@ -45,6 +47,7 @@ public class DocumentController {
     private final RemoteResourceService remoteResourceService;
 
     @Operation(summary = "上传文档（初始化）", description = "用户提供文档信息以换取对象文件存储的PUT URL并使用此上传文件")
+    @Log(title = "上传文档", businessType = BusinessType.INSERT)
     @PostMapping("/uploadDoc")
     public R<DocumentUploadInitResponse> uploadDoc(@Valid @RequestBody DocumentUploadInitRequest request) {
         Long uploaderId = SecurityContextHolder.getUserId();
