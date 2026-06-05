@@ -490,7 +490,7 @@ public class WalletServiceImpl implements IWalletService {
             return;
         }
 
-        this.changeCoinBalance(req.getBuyerId(), req.getBuyerId(), req.getTraceId(), -req.getPrice(), WalletTransactionType.SPEND, null);
-        this.changeCoinBalance(req.getSellerId(), req.getSellerId(), req.getTraceId(), req.getPrice(), WalletTransactionType.INCOME, null);
+        this.changeCoinBalance(req.getBuyerId(), req.getBuyerId(), req.getTraceId(), -req.getPrice(), WalletTransactionType.SPEND, req.getMeta());
+        this.changeCoinBalance(req.getSellerId(), req.getSellerId(), req.getTraceId(), req.getPrice(), WalletTransactionType.INCOME, req.getMeta());
     }
 }
