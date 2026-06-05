@@ -40,7 +40,17 @@ public class OpenApiProxyController {
     @Value("${wisepen.security.from-source:APISIX-wX0iR6tY}")
     private String fromSource;
 
-    @Operation(summary = "获取微服务 OpenAPI 文档")
+    @Operation(
+            summary = "获取微服务 OpenAPI 文档",
+            description = """
+                    用途：统一文档入口按服务键代理获取目标微服务的 OpenAPI JSON。
+                    请求：serviceKey 为文档配置中的服务键。
+                    约束：serviceKey 必须配置到实际服务名；目标服务必须有可用实例。
+                    处理：通过负载均衡选择服务实例，转发内部来源标识和灰度开发者标识到目标服务的 /v3/api-docs；不合并或改写目标 OpenAPI 内容。
+                    失败：服务键未知、目标服务无实例或代理请求失败时按 HTTP 状态返回。
+                    响应：返回目标微服务原始 OpenAPI JSON。
+                    """
+    )
     @GetMapping(value = "/{serviceKey}", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<String> getOpenApi(@PathVariable String serviceKey) {
         String serviceName = docsServiceProperties.getServices().get(serviceKey);
