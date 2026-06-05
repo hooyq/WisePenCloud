@@ -26,4 +26,12 @@ public interface ResourceValidationMsg {
 
     // 互动相关校验
     String SCORE_RANGE_INVALID = "评分必须在1到5之间";
+
+    // Market 相关校验
+    String MARKET_LISTING_ID_NOT_BLANK = "上架记录ID不能为空";
+    String MARKET_PURCHASE_ID_NOT_BLANK = "购买记录ID不能为空";
+    String MARKET_PRICE_NOT_NULL = "价格不能为空";
+    String MARKET_PRICE_INVALID = "价格必须大于0";
+    String MARKET_VERSION_NOT_NULL = "上架版本不能为空";
+    String MARKET_VERSION_INVALID = "上架版本不能小于0";
 }

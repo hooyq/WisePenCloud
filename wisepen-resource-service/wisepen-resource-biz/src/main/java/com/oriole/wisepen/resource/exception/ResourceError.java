@@ -47,7 +47,19 @@ public enum ResourceError implements IResult {
     BIND_RESOURCE_TO_TAG_NODE_DENIED(5531, new ResultKey(BusinessDomain.RESOURCE, ResourceSubject.RESOURCE_TAG, ErrorReason.PERMISSION_DENIED),"无权挂载资源到该标签下"),
 
     // 小组资源管理模式异常
-    CANNOT_CHANGE_FILE_ORG_LOGIC_FROM_TAG_TO_FOLDER(5611, new ResultKey(BusinessDomain.RESOURCE, ResourceSubject.FILE_ORG_LOGIC, ErrorReason.UNSUPPORTED), "小组资源管理模式不允许从TAG改为FOLDER");
+    CANNOT_CHANGE_FILE_ORG_LOGIC_FROM_TAG_TO_FOLDER(5611, new ResultKey(BusinessDomain.RESOURCE, ResourceSubject.FILE_ORG_LOGIC, ErrorReason.UNSUPPORTED), "小组资源管理模式不允许从TAG改为FOLDER"),
+
+    // Market 相关异常
+    MARKET_LISTING_NOT_FOUND(5711, new ResultKey(BusinessDomain.RESOURCE, ResourceSubject.RESOURCE, ErrorReason.NOT_FOUND), "上架记录不存在"),
+    MARKET_PURCHASE_NOT_FOUND(5712, new ResultKey(BusinessDomain.RESOURCE, ResourceSubject.RESOURCE, ErrorReason.NOT_FOUND), "购买记录不存在"),
+    MARKET_LISTING_ALREADY_EXISTS(5713, new ResultKey(BusinessDomain.RESOURCE, ResourceSubject.RESOURCE, ErrorReason.ALREADY_EXISTS), "该资源已在该集市上架"),
+    MARKET_GROUP_REQUIRED(5721, new ResultKey(BusinessDomain.RESOURCE, ResourceSubject.RESOURCE, ErrorReason.INVALID), "目标小组不是集市组"),
+    MARKET_LISTING_NOT_ACTIVE(5722, new ResultKey(BusinessDomain.RESOURCE, ResourceSubject.RESOURCE, ErrorReason.NOT_ALLOWED), "资源未上架或已下架"),
+    MARKET_SELF_PURCHASE_NOT_ALLOWED(5723, new ResultKey(BusinessDomain.RESOURCE, ResourceSubject.RESOURCE, ErrorReason.NOT_ALLOWED), "不能购买自己上架的资源"),
+    MARKET_VERSION_NOT_SUPPORTED(5724, new ResultKey(BusinessDomain.RESOURCE, ResourceSubject.RESOURCE, ErrorReason.UNSUPPORTED), "该资源类型暂不支持指定版本"),
+    MARKET_RESOURCE_TYPE_NOT_SUPPORTED(5725, new ResultKey(BusinessDomain.RESOURCE, ResourceSubject.RESOURCE, ErrorReason.UNSUPPORTED), "该资源类型暂不支持复制"),
+    MARKET_PURCHASE_ALREADY_FORKED(5726, new ResultKey(BusinessDomain.RESOURCE, ResourceSubject.RESOURCE, ErrorReason.NOT_ALLOWED), "该购买记录已完成复制"),
+    CANNOT_BIND_MARKET_RESOURCE_DIRECTLY(5727, new ResultKey(BusinessDomain.RESOURCE, ResourceSubject.RESOURCE_TAG, ErrorReason.NOT_ALLOWED), "集市资源挂载必须通过上架接口完成");
 
     private final Integer code;
     private final ResultKey key;

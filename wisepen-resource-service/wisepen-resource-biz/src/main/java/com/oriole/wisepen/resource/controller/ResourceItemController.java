@@ -5,9 +5,11 @@ import com.oriole.wisepen.common.core.context.SecurityContextHolder;
 import com.oriole.wisepen.common.core.domain.PageR;
 import com.oriole.wisepen.common.core.domain.R;
 import com.oriole.wisepen.common.core.domain.enums.BusinessType;
+import com.oriole.wisepen.common.core.domain.enums.GroupType;
 import com.oriole.wisepen.common.core.domain.enums.GroupRoleType;
 import com.oriole.wisepen.common.core.domain.enums.list.QueryLogicEnum;
 import com.oriole.wisepen.common.core.domain.enums.list.SortDirectionEnum;
+import com.oriole.wisepen.common.core.exception.ServiceException;
 import com.oriole.wisepen.common.log.annotation.Log;
 import com.oriole.wisepen.common.security.annotation.CheckLogin;
 import com.oriole.wisepen.resource.constant.ResourceConstants;
@@ -16,7 +18,10 @@ import com.oriole.wisepen.resource.domain.dto.res.ResourceItemResponse;
 import com.oriole.wisepen.resource.domain.dto.req.ResourceRenameRequest;
 import com.oriole.wisepen.resource.domain.dto.req.ResourceUpdateTagsRequest;
 import com.oriole.wisepen.resource.enums.ResourceSortBy;
+import com.oriole.wisepen.resource.exception.ResourceError;
 import com.oriole.wisepen.resource.service.IResourceService;
+import com.oriole.wisepen.user.api.domain.base.GroupDisplayBase;
+import com.oriole.wisepen.user.api.feign.RemoteUserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -25,6 +30,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @Tag(name = "资源管理", description = "资源重命名、更新资源标签与列出资源")
 @RestController
@@ -34,6 +40,7 @@ import java.util.List;
 public class ResourceItemController {
 
     private final IResourceService resourceService;
+    private final RemoteUserService remoteUserService;
 
     // 重命名资源
     @Operation(summary = "重命名资源", description = "用户修改资源名称")
@@ -73,8 +80,15 @@ public class ResourceItemController {
                     req.getTagIds()
             );
         } else {
+            Long groupId = Long.parseLong(req.getGroupId());
+            Map<Long, GroupDisplayBase> groupMap = remoteUserService.getGroupDisplayInfo(List.of(groupId)).getData();
+            GroupDisplayBase groupInfo = groupMap == null ? null : groupMap.get(groupId);
+            if (groupInfo != null && groupInfo.getGroupType() == GroupType.MARKET_GROUP) {
+                // 集市挂载需要记录价格、版本和卖家信息，不能绕过 market listing。
+                throw new ServiceException(ResourceError.CANNOT_BIND_MARKET_RESOURCE_DIRECTLY);
+            }
             // 资源所有者或小组管理员可以修改资源挂载的小组标签
-            GroupRoleType groupRole = SecurityContextHolder.getGroupRole(Long.parseLong(req.getGroupId()));
+            GroupRoleType groupRole = SecurityContextHolder.getGroupRole(groupId);
             if (groupRole != GroupRoleType.ADMIN && groupRole != GroupRoleType.OWNER) {
                 // 非小组管理员不能添加或修改资源挂载的小组标签，除非是资源所有者且拥有该标签的资源挂载权限
                 resourceService.assertResourceOwner(req.getResourceId(), userId);
