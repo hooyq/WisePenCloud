@@ -1,7 +1,7 @@
 package com.oriole.wisepen.document.api.feign;
 
 import com.oriole.wisepen.common.core.domain.R;
-import com.oriole.wisepen.document.api.domain.dto.req.DocumentForkRequest;
+import com.oriole.wisepen.resource.domain.dto.req.ResourceForkRequest;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.cloud.openfeign.FeignClient;
@@ -14,5 +14,5 @@ public interface RemoteDocumentService {
 
     @Operation(summary = "复制文档", description = "version=0 表示当前文档内容")
     @PostMapping("/internal/document/forkDocument")
-    R<Void> forkDocument(@RequestBody DocumentForkRequest request);
+    R<Void> forkDocument(@RequestBody ResourceForkRequest request);
 }

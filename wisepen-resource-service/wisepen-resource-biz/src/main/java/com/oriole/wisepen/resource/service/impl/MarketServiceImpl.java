@@ -6,9 +6,7 @@ import com.oriole.wisepen.common.core.domain.enums.GroupRoleType;
 import com.oriole.wisepen.common.core.domain.enums.GroupType;
 import com.oriole.wisepen.common.core.domain.enums.list.SortDirectionEnum;
 import com.oriole.wisepen.common.core.exception.ServiceException;
-import com.oriole.wisepen.document.api.domain.dto.req.DocumentForkRequest;
 import com.oriole.wisepen.document.api.feign.RemoteDocumentService;
-import com.oriole.wisepen.note.api.domain.dto.req.NoteForkRequest;
 import com.oriole.wisepen.note.api.feign.RemoteNoteService;
 import com.oriole.wisepen.resource.domain.dto.ResourceCheckPermissionReqDTO;
 import com.oriole.wisepen.resource.domain.dto.ResourceCheckPermissionResDTO;
@@ -18,6 +16,7 @@ import com.oriole.wisepen.resource.domain.dto.req.MarketListResourceRequest;
 import com.oriole.wisepen.resource.domain.dto.req.MarketOffShelfRequest;
 import com.oriole.wisepen.resource.domain.dto.req.MarketPurchaseRequest;
 import com.oriole.wisepen.resource.domain.dto.req.MarketUpdateListingVersionRequest;
+import com.oriole.wisepen.resource.domain.dto.req.ResourceForkRequest;
 import com.oriole.wisepen.resource.domain.dto.res.MarketListingResponse;
 import com.oriole.wisepen.resource.domain.dto.res.MarketPurchaseResponse;
 import com.oriole.wisepen.resource.domain.entity.MarketListingEntity;
@@ -329,21 +328,17 @@ public class MarketServiceImpl implements IMarketService {
 
         try {
             Long forkedVersion = purchase.getForkedVersion() == null ? 0L : purchase.getForkedVersion();
+            ResourceForkRequest forkRequest = ResourceForkRequest.builder()
+                    .sourceResourceId(source.getResourceId())
+                    .targetResourceId(forkedResourceId)
+                    .version(forkedVersion)
+                    .buyerId(buyerId)
+                    .build();
             if (source.getResourceType() == ResourceType.NOTE) {
-                remoteNoteService.forkNote(NoteForkRequest.builder()
-                        .sourceResourceId(source.getResourceId())
-                        .targetResourceId(forkedResourceId)
-                        .version(forkedVersion)
-                        .buyerId(buyerId)
-                        .build());
+                remoteNoteService.forkNote(forkRequest);
             } else if (Set.of(ResourceType.PDF, ResourceType.DOC, ResourceType.DOCX, ResourceType.PPT,
                     ResourceType.PPTX, ResourceType.XLS, ResourceType.XLSX).contains(source.getResourceType())) {
-                remoteDocumentService.forkDocument(DocumentForkRequest.builder()
-                        .sourceResourceId(source.getResourceId())
-                        .targetResourceId(forkedResourceId)
-                        .version(forkedVersion)
-                        .buyerId(buyerId)
-                        .build());
+                remoteDocumentService.forkDocument(forkRequest);
             } else {
                 throw new ServiceException(ResourceError.MARKET_RESOURCE_TYPE_NOT_SUPPORTED);
             }
@@ -403,7 +398,7 @@ public class MarketServiceImpl implements IMarketService {
             Page<MarketListingEntity> entityPage = tagIds == null || tagIds.isEmpty()
                     ? marketListingRepository.findByMarketGroupIdAndStatus(marketGroupId, MarketListingStatus.LISTED, pageable)
                     : marketListingRepository.findByMarketGroupIdAndStatusAndTagIdsIn(
-                            marketGroupId, MarketListingStatus.LISTED, tagIds, pageable);
+                    marketGroupId, MarketListingStatus.LISTED, tagIds, pageable);
             listings = entityPage.getContent();
             total = entityPage.getTotalElements();
         }
