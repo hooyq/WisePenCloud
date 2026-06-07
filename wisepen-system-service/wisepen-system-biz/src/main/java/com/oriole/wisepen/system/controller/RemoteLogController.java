@@ -1,8 +1,11 @@
 package com.oriole.wisepen.system.controller;
 
-import com.oriole.wisepen.system.api.domain.dto.SysOperLogDTO;
-import com.oriole.wisepen.system.service.SysOperLogService;
+import com.oriole.wisepen.common.core.domain.PageR;
 import com.oriole.wisepen.common.core.domain.R;
+import com.oriole.wisepen.system.api.domain.dto.SysOperLogDTO;
+import com.oriole.wisepen.system.api.domain.dto.SysOperLogQueryRequest;
+import com.oriole.wisepen.system.api.domain.dto.SysOperLogQueryResponse;
+import com.oriole.wisepen.system.service.SysOperLogService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -38,5 +41,11 @@ public class RemoteLogController {
     @PostMapping("/save")
     public R<Boolean> save(@RequestBody SysOperLogDTO dto) {
         return R.ok(sysOperLogService.saveLog(dto));
+    }
+
+    @Operation(summary = "内部查询操作日志")
+    @PostMapping("/list")
+    public R<PageR<SysOperLogQueryResponse>> list(@RequestBody SysOperLogQueryRequest query) {
+        return R.ok(sysOperLogService.listLogs(query));
     }
 }
