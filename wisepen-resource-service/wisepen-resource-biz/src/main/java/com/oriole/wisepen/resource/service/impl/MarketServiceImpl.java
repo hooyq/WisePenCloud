@@ -187,27 +187,40 @@ public class MarketServiceImpl implements IMarketService {
 
     @Override
     public void offShelf(MarketOffShelfRequest request, Long operatorId, Map<Long, GroupRoleType> groupRoles) {
-        MarketListingEntity entity = marketListingRepository.findById(request.getListingId())
+        ResourceItemEntity resource = resourceItemRepository.findByListingInfosListingId(request.getListingId())
                 .orElseThrow(() -> new ServiceException(ResourceError.MARKET_LISTING_NOT_FOUND));
-        boolean isSeller = operatorId.toString().equals(entity.getSellerId());
-        GroupRoleType marketRole = groupRoles == null ? null : groupRoles.get(Long.valueOf(entity.getMarketGroupId()));
+        ListingInfo listing = resource.getListingInfos().stream()
+                .filter(info -> request.getListingId().equals(info.getListingId()))
+                .findFirst()
+                .orElseThrow(() -> new ServiceException(ResourceError.MARKET_LISTING_NOT_FOUND));
+
+        Long marketGroupId = Long.valueOf(request.getMarketGroupId());
+        GroupDisplayBase groupInfo = remoteUserService.getGroupDisplayInfo(List.of(marketGroupId)).getData().get(marketGroupId);
+        if (groupInfo == null || groupInfo.getGroupType() != GroupType.MARKET_GROUP) {
+            throw new ServiceException(ResourceError.MARKET_GROUP_REQUIRED);
+        }
+        GroupRoleType marketRole = groupRoles.get(marketGroupId);
+        boolean isSeller = operatorId.toString().equals(listing.getSellerId());
         boolean isMarketAdmin = marketRole == GroupRoleType.OWNER || marketRole == GroupRoleType.ADMIN;
         if (!isSeller && !isMarketAdmin) {
             throw new ServiceException(ResourceError.RESOURCE_PERMISSION_DENIED);
         }
 
+        LocalDateTime now = LocalDateTime.now();
+        listing.setStatus(MarketListingStatus.OFF_SHELF);
+        listing.setOffShelfAt(now);
+        listing.setRevision(listing.getRevision() == null ? 1 : listing.getRevision() + 1);
+        resourceItemRepository.save(resource);
+
         resourceService.updateGroupResourceTags(
-                entity.getSourceResourceId(),
-                entity.getMarketGroupId(),
+                resource.getResourceId(),
+                request.getMarketGroupId(),
                 operatorId.toString(),
                 marketRole,
                 null
         );
-        entity.setStatus(MarketListingStatus.OFF_SHELF);
-        entity.setRevision(entity.getRevision() == null ? 1 : entity.getRevision() + 1);
-        marketListingRepository.save(entity);
         log.info("market listing offShelf listingId={} sourceResourceId={} operatorId={}",
-                entity.getListingId(), entity.getSourceResourceId(), operatorId);
+                listing.getListingId(), resource.getResourceId(), operatorId);
     }
 
     @Override
