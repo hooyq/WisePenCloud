@@ -29,7 +29,7 @@ import com.oriole.wisepen.file.storage.api.domain.dto.UploadInitRespDTO;
 import com.oriole.wisepen.file.storage.api.enums.StorageSceneEnum;
 import com.oriole.wisepen.file.storage.api.feign.RemoteStorageService;
 import com.oriole.wisepen.resource.domain.dto.ResourceCreateReqDTO;
-import com.oriole.wisepen.resource.domain.dto.req.ResourceForkRequest;
+import com.oriole.wisepen.resource.domain.mq.ResourceForkMessage;
 import com.oriole.wisepen.resource.enums.ResourceType;
 import com.oriole.wisepen.resource.feign.RemoteResourceService;
 import lombok.RequiredArgsConstructor;
@@ -316,15 +316,18 @@ public class DocumentServiceImpl implements IDocumentService {
     }
 
     @Override
-    public void forkDocument(ResourceForkRequest request) {
-        DocumentInfoEntity sourceInfo = documentInfoRepository.findByResourceId(request.getSourceResourceId())
+    public void forkDocument(ResourceForkMessage msg) {
+        String targetDocumentId = msg.getForkTaskId();
+        DocumentInfoEntity existingTarget = documentInfoRepository.findById(targetDocumentId).orElse(null);
+        if (existingTarget != null) {
+            return;
+        }
+        DocumentInfoEntity sourceInfo = documentInfoRepository.findByResourceId(msg.getSourceResourceId())
                 .orElseThrow(() -> new ServiceException(DocumentError.DOCUMENT_NOT_FOUND));
-        if (sourceInfo.getDocumentStatus() == null
-                || sourceInfo.getDocumentStatus().getStatus() != DocumentStatusEnum.READY) {
+        if (sourceInfo.getDocumentStatus() == null || sourceInfo.getDocumentStatus().getStatus() != DocumentStatusEnum.READY) {
             throw new ServiceException(DocumentError.DOCUMENT_PREVIEW_NOT_READY);
         }
 
-        String targetDocumentId = IdUtil.fastSimpleUUID();
         List<String> copiedObjectKeys = new ArrayList<>();
         try {
             StorageRecordDTO copied = remoteStorageService.copyObject(StorageCopyRequest.builder()
@@ -342,30 +345,30 @@ public class DocumentServiceImpl implements IDocumentService {
                     .build()).getData();
             String previewObjectKey = copied.getObjectKey();
             copiedObjectKeys.add(previewObjectKey);
+        } catch (Exception e) {
+            if (!copiedObjectKeys.isEmpty()) {
+                eventPublisher.publishFileDeleteEvent(copiedObjectKeys);
+            }
+            log.warn("documentFork compensated forkTaskId={} sourceResourceId={} documentId={}",
+                    msg.getForkTaskId(), msg.getSourceResourceId(), targetDocumentId, e);
+            throw new ServiceException(DocumentError.DOCUMENT_FORK_FAILED, e.getMessage());
+        }
 
+        try {
             DocumentUploadMeta uploadMeta = DocumentUploadMeta.builder()
                     .documentName(sourceInfo.getUploadMeta().getDocumentName())
-                    .uploaderId(request.getBuyerId())
+                    .uploaderId(msg.getBuyerId())
                     .fileType(sourceInfo.getUploadMeta().getFileType())
                     .size(sourceInfo.getUploadMeta().getSize())
                     .build();
-            DocumentInfoEntity targetInfo = DocumentInfoEntity.builder()
-                    .documentId(targetDocumentId)
-                    .resourceId(request.getTargetResourceId())
-                    .sourceObjectKey(sourceObjectKey)
-                    .previewObjectKey(previewObjectKey)
-                    .uploadMeta(uploadMeta)
-                    .documentStatus(new DocumentStatus(DocumentStatusEnum.READY))
-                    .maxPreviewPages(sourceInfo.getMaxPreviewPages())
-                    .build();
-            documentInfoRepository.save(targetInfo);
 
-            documentContentRepository.findById(sourceInfo.getDocumentId())
-                    .map(sourceContent -> DocumentContentEntity.builder()
-                            .documentId(targetDocumentId)
-                            .rawText(sourceContent.getRawText())
-                            .build())
-                    .ifPresent(documentContentRepository::save);
+            DocumentContentEntity sourceContent = documentContentRepository.findById(sourceInfo.getDocumentId())
+                    .orElseThrow(() -> new ServiceException(DocumentError.DOCUMENT_FORK_FAILED, "source document content missing"));
+            String content = sourceContent.getRawText();
+            documentContentRepository.save(DocumentContentEntity.builder()
+                    .documentId(targetDocumentId)
+                    .rawText(content)
+                    .build());
 
             documentPdfMetaRepository.findById(sourceInfo.getDocumentId())
                     .map(sourceMeta -> {
@@ -375,23 +378,41 @@ public class DocumentServiceImpl implements IDocumentService {
                     })
                     .ifPresent(documentPdfMetaRepository::save);
 
+            DocumentInfoEntity targetInfo = DocumentInfoEntity.builder()
+                    .documentId(targetDocumentId)
+                    .sourceObjectKey(copiedObjectKeys.getFirst())
+                    .previewObjectKey(copiedObjectKeys.getLast())
+                    .uploadMeta(uploadMeta)
+                    .documentStatus(new DocumentStatus(DocumentStatusEnum.READY))
+                    .maxPreviewPages(sourceInfo.getMaxPreviewPages())
+                    .build();
+            documentInfoRepository.save(targetInfo);
+
+            String resourceId = remoteResourceService.createResource(ResourceCreateReqDTO.builder()
+                    .resourceId(targetDocumentId)
+                    .resourceName(StrUtil.isBlank(msg.getResourceName())
+                            ? sourceInfo.getUploadMeta().getDocumentName()
+                            : msg.getResourceName())
+                    .resourceType(msg.getResourceType())
+                    .ownerId(msg.getBuyerId().toString())
+                    .preview(msg.getPreview())
+                    .size(sourceInfo.getUploadMeta().getSize())
+                    .build()).getData();
+            documentInfoRepository.updateResourceIdById(targetDocumentId, resourceId);
+
             eventPublisher.publishReadyEvent(DocumentReadyMessage.builder()
-                    .resourceId(request.getTargetResourceId())
-                    .content(documentContentRepository.findById(targetDocumentId)
-                            .map(DocumentContentEntity::getRawText)
-                            .orElse(null))
+                    .resourceId(resourceId)
+                    .content(content)
                     .build());
-            log.info("document forked sourceResourceId={} targetResourceId={} targetDocumentId={}",
-                    request.getSourceResourceId(), request.getTargetResourceId(), targetDocumentId);
+            log.info("documentFork created forkTaskId={} sourceResourceId={} resourceId={} documentId={}",
+                    msg.getForkTaskId(), msg.getSourceResourceId(), resourceId, targetDocumentId);
         } catch (Exception e) {
-            if (!copiedObjectKeys.isEmpty()) {
-                eventPublisher.publishFileDeleteEvent(copiedObjectKeys);
-            }
-            documentContentRepository.deleteByDocumentId(targetDocumentId);
+            documentContentRepository.deleteById(targetDocumentId);
             documentPdfMetaRepository.deleteById(targetDocumentId);
             documentInfoRepository.deleteById(targetDocumentId);
-            log.warn("document fork compensated sourceResourceId={} targetResourceId={} targetDocumentId={}",
-                    request.getSourceResourceId(), request.getTargetResourceId(), targetDocumentId, e);
+            eventPublisher.publishFileDeleteEvent(copiedObjectKeys);
+            log.warn("documentFork compensated forkTaskId={} sourceResourceId={} documentId={}",
+                    msg.getForkTaskId(), msg.getSourceResourceId(), targetDocumentId, e);
             throw new ServiceException(DocumentError.DOCUMENT_FORK_FAILED, e.getMessage());
         }
     }
