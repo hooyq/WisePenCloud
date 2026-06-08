@@ -42,8 +42,9 @@ public class RemoteLogController {
 
     @Operation(summary = "内部查询操作日志")
     @GetMapping("/listLogs")
-    public R<PageR<SysOperLogResponse>> listLogs(String operUrl, Long operUserId, LocalDateTime startTime, LocalDateTime endTime,
-                                                 Integer status, int page, int size) {
+    R<PageR<SysOperLogResponse>> listLogs(@RequestParam String operUrl, @RequestParam Long operUserId,
+                                          @RequestParam LocalDateTime startTime, @RequestParam LocalDateTime endTime,
+                                          @RequestParam Integer status, @RequestParam int page, @RequestParam int size) {
         return R.ok(sysOperLogService.listLogs(operUrl, operUserId, startTime, endTime, status, page, size));
     }
 }

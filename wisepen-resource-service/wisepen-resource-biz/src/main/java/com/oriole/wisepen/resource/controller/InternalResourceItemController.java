@@ -93,7 +93,7 @@ public class InternalResourceItemController implements RemoteResourceService {
                     """
     )
     @PostMapping("/checkResPermission")
-    public R<ResourceCheckPermissionResDTO> checkResPermission(ResourceCheckPermissionReqDTO dto) {
+    public R<ResourceCheckPermissionResDTO> checkResPermission(@RequestBody ResourceCheckPermissionReqDTO dto) {
         ResourceCheckPermissionResDTO hasPermission = resourceService.checkPermission(dto);
         return R.ok(hasPermission);
     }

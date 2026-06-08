@@ -7,6 +7,7 @@ import com.oriole.wisepen.system.api.domain.dto.res.SysOperLogResponse;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 
 import java.time.LocalDateTime;
 
@@ -17,6 +18,6 @@ public interface RemoteLogService {
     R<Boolean> saveLog(@RequestBody SysOperLogDTO sysOperLog);
 
     @PostMapping("/system/log/listLogs")
-    R<PageR<SysOperLogResponse>> listLogs(String operUrl, Long operUserId, LocalDateTime startTime, LocalDateTime endTime,
-                                          Integer status, int page, int size);
+    R<PageR<SysOperLogResponse>> listLogs(@RequestParam String operUrl, @RequestParam Long operUserId, @RequestParam LocalDateTime startTime, @RequestParam LocalDateTime endTime,
+                                          @RequestParam Integer status, @RequestParam int page, @RequestParam  int size);
 }
