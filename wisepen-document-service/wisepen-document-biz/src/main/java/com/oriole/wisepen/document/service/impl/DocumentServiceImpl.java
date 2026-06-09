@@ -389,10 +389,7 @@ public class DocumentServiceImpl implements IDocumentService {
             documentInfoRepository.save(targetInfo);
 
             String resourceId = remoteResourceService.createResource(ResourceCreateReqDTO.builder()
-                    .resourceId(targetDocumentId)
-                    .resourceName(StrUtil.isBlank(msg.getResourceName())
-                            ? sourceInfo.getUploadMeta().getDocumentName()
-                            : msg.getResourceName())
+                    .resourceName(msg.getResourceName())
                     .resourceType(msg.getResourceType())
                     .ownerId(msg.getBuyerId().toString())
                     .preview(msg.getPreview())

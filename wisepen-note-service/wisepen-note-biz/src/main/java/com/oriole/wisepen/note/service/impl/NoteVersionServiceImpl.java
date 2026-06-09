@@ -13,7 +13,6 @@ import com.oriole.wisepen.note.exception.NoteError;
 import com.oriole.wisepen.note.repository.NoteDocumentRepository;
 import com.oriole.wisepen.note.repository.NoteVersionRepository;
 import com.oriole.wisepen.note.service.INoteVersionService;
-import com.oriole.wisepen.resource.domain.dto.req.ResourceForkRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.bson.types.Binary;
@@ -69,24 +68,16 @@ public class NoteVersionServiceImpl implements INoteVersionService {
 
     @Override
     public NoteSnapshotResponse getLatestVersion(String resourceId) {
-        return getSnapshot(resourceId, 0L);
-    }
-
-    @Override
-    public NoteSnapshotResponse getSnapshot(String resourceId, Long version) {
         NoteInfoEntity noteInfoEntity = noteDocumentRepository.findByResourceId(resourceId)
                 .orElseThrow(() -> new ServiceException(NoteError.NOTE_NOT_FOUND));
         // 获取最后一个Full版本
-        boolean latest = version.equals(0L);
-        Optional<NoteVersionEntity> latestFullVersionEntity = latest
-                ? noteVersionRepository.findFirstByResourceIdAndTypeOrderByVersionDesc(resourceId, VersionType.FULL)
-                : noteVersionRepository.findFirstByResourceIdAndTypeAndVersionLessThanEqualOrderByVersionDesc(resourceId, VersionType.FULL, version);
+        Optional<NoteVersionEntity> latestFullVersionEntity = noteVersionRepository
+                .findFirstByResourceIdAndTypeOrderByVersionDesc(resourceId, VersionType.FULL);
         // 完整版本的版本号
         Long latestFullVersion = latestFullVersionEntity.map(NoteVersionEntity::getVersion).orElse(0L);
         // 获取在该 Full 版本之后的所有 DELTA 版本
-        List<NoteVersionEntity> deltaVersionEntityList = latest
-                ? noteVersionRepository.findByResourceIdAndVersionGreaterThanAndTypeOrderByVersionAsc(resourceId, latestFullVersion, VersionType.DELTA)
-                : noteVersionRepository.findByResourceIdAndVersionGreaterThanAndVersionLessThanEqualAndTypeOrderByVersionAsc(resourceId, latestFullVersion, version, VersionType.DELTA);
+        List<NoteVersionEntity> deltaVersionEntityList = noteVersionRepository
+                .findByResourceIdAndVersionGreaterThanAndTypeOrderByVersionAsc(resourceId, latestFullVersion, VersionType.DELTA);
         // 处理增量数据
         List<String> deltasBase64 = deltaVersionEntityList.stream()
                 .map(e -> Base64.getEncoder().encodeToString(e.getData().getData()))
@@ -106,53 +97,6 @@ public class NoteVersionServiceImpl implements INoteVersionService {
                 .version(currentVersion)
                 .deltas(deltasBase64.isEmpty() ? null : deltasBase64)
                 .build();
-    }
-
-    @Override
-    public void forkNote(ResourceForkRequest request) {
-        NoteInfoEntity sourceInfo = noteDocumentRepository.findByResourceId(request.getSourceResourceId())
-                .orElseThrow(() -> new ServiceException(NoteError.NOTE_NOT_FOUND));
-        boolean latest = request.getVersion().equals(0L);
-        Optional<NoteVersionEntity> sourceFull = latest
-                ? noteVersionRepository.findFirstByResourceIdAndTypeOrderByVersionDesc(
-                request.getSourceResourceId(), VersionType.FULL)
-                : noteVersionRepository.findFirstByResourceIdAndTypeAndVersionLessThanEqualOrderByVersionDesc(
-                request.getSourceResourceId(), VersionType.FULL, request.getVersion());
-        Long fullVersion = sourceFull.map(NoteVersionEntity::getVersion).orElse(0L);
-        List<NoteVersionEntity> sourceDeltas = latest
-                ? noteVersionRepository.findByResourceIdAndVersionGreaterThanAndTypeOrderByVersionAsc(
-                request.getSourceResourceId(), fullVersion, VersionType.DELTA)
-                : noteVersionRepository.findByResourceIdAndVersionGreaterThanAndVersionLessThanEqualAndTypeOrderByVersionAsc(
-                request.getSourceResourceId(), fullVersion, request.getVersion(), VersionType.DELTA);
-        Long targetVersion = sourceDeltas.isEmpty() ? fullVersion : sourceDeltas.getLast().getVersion();
-
-        NoteInfoEntity targetInfo = NoteInfoEntity.builder()
-                .resourceId(request.getTargetResourceId())
-                .lastUpdatedAt(LocalDateTime.now())
-                .authors(new ArrayList<>(List.of(request.getBuyerId())))
-                .plainText(sourceInfo.getPlainText())
-                .build();
-        noteDocumentRepository.save(targetInfo);
-
-        List<NoteVersionEntity> sourceVersions = new ArrayList<>();
-        sourceFull.ifPresent(sourceVersions::add);
-        sourceVersions.addAll(sourceDeltas);
-
-        List<NoteVersionEntity> targetVersions = new ArrayList<>();
-        for (NoteVersionEntity source : sourceVersions) {
-            targetVersions.add(NoteVersionEntity.builder()
-                    .resourceId(request.getTargetResourceId())
-                    .version(source.getVersion())
-                    .type(source.getType())
-                    .label(source.getLabel())
-                    .createdAt(LocalDateTime.now())
-                    .createdBy(new ArrayList<>(List.of(request.getBuyerId())))
-                    .data(source.getData())
-                    .build());
-        }
-        noteVersionRepository.saveAll(targetVersions);
-        log.info("note forked sourceResourceId={} targetResourceId={} version={} copiedVersions={}",
-                request.getSourceResourceId(), request.getTargetResourceId(), targetVersion, targetVersions.size());
     }
 
     @Override
