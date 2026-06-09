@@ -24,6 +24,9 @@ public interface ResourceValidationMsg {
 
     String FILE_ORG_LOGIC_NOT_NULL = "资源组织模式不能为空";
 
+    // 分页相关校验
+    String SIZE_MAX_INVALID = "每页条数不能超过100";
+
     // 互动相关校验
     String SCORE_RANGE_INVALID = "评分必须在1到5之间";
 

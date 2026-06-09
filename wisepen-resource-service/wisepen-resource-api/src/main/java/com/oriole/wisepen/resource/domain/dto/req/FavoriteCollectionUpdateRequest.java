@@ -9,6 +9,9 @@ import lombok.Data;
  */
 @Data
 public class FavoriteCollectionUpdateRequest {
+    @NotBlank(message = ResourceValidationMsg.COLLECTION_ID_NOT_BLANK)
+    private String collectionId;
+
     @NotBlank(message = ResourceValidationMsg.COLLECTION_NAME_NOT_BLANK)
     private String collectionName;
 
