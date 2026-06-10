@@ -13,6 +13,8 @@ import java.util.Optional;
 public interface SkillRepository extends MongoRepository<SkillEntity, String> {
     Optional<SkillEntity> findByResourceId(String resourceId);
 
+    List<SkillEntity> findByResourceIdInAndVersionGreaterThan(List<String> resourceIds, Integer version);
+
     void deleteByResourceIdIn(List<String> resourceIds);
 
     @Query("{ '_id': ?0 }")

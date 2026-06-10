@@ -1,8 +1,10 @@
 package com.oriole.wisepen.ai.asset.service.impl;
 
+import cn.hutool.core.bean.BeanUtil;
 import com.oriole.wisepen.ai.asset.domain.base.SkillInfoBase;
 import com.oriole.wisepen.ai.asset.domain.dto.req.SkillCreateRequest;
 import com.oriole.wisepen.ai.asset.domain.dto.req.SkillUpdateRequest;
+import com.oriole.wisepen.ai.asset.domain.dto.res.SkillMetaInfoResponse;
 import com.oriole.wisepen.ai.asset.domain.entity.SkillEntity;
 import com.oriole.wisepen.ai.asset.enums.SkillSourceType;
 import com.oriole.wisepen.ai.asset.exception.SkillError;
@@ -74,5 +76,13 @@ public class SkillServiceImpl implements ISkillService {
     public SkillInfoBase getSkillInfo(String resourceId) {
         return skillRepository.findByResourceId(resourceId)
                 .orElseThrow(() -> new ServiceException(SkillError.SKILL_NOT_FOUND));
+    }
+
+    @Override
+    public List<SkillMetaInfoResponse> listPublishedSkillsMeta(List<String> resourceIds) {
+        return skillRepository.findByResourceIdInAndVersionGreaterThan(resourceIds, 0)
+                .stream()
+                .map(entity -> BeanUtil.copyProperties(entity, SkillMetaInfoResponse.class))
+                .toList();
     }
 }

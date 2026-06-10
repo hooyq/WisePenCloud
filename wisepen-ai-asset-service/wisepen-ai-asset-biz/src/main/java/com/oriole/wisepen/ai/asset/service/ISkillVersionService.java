@@ -4,8 +4,7 @@ import com.oriole.wisepen.ai.asset.domain.dto.req.SkillAssetDeleteRequest;
 import com.oriole.wisepen.ai.asset.domain.dto.req.SkillAssetUploadInitRequest;
 import com.oriole.wisepen.ai.asset.domain.dto.req.SkillVersionPublishRequest;
 import com.oriole.wisepen.ai.asset.domain.dto.res.SkillAssetUploadInitResponse;
-import com.oriole.wisepen.ai.asset.domain.dto.res.SkillVersionInfoResponse;
-import com.oriole.wisepen.ai.asset.domain.entity.SkillVersionEntity;
+import com.oriole.wisepen.ai.asset.domain.dto.res.SkillVersionBundleInfoResponse;
 import com.oriole.wisepen.file.storage.api.domain.mq.FileUploadedMessage;
 
 import java.util.List;
@@ -14,7 +13,7 @@ public interface ISkillVersionService {
 
     void createDraftSkillVersion(String resourceId, Integer draftVersion);
 
-    SkillVersionInfoResponse getSkillVersion(String resourceId, Integer version);
+    SkillVersionBundleInfoResponse getSkillVersionBundle(String resourceId, Integer version);
 
     SkillAssetUploadInitResponse initUploadSkillAssets(SkillAssetUploadInitRequest req);
 

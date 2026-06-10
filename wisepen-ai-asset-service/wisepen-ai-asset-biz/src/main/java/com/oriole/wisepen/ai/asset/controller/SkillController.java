@@ -7,8 +7,8 @@ import com.oriole.wisepen.ai.asset.domain.dto.req.SkillCreateRequest;
 import com.oriole.wisepen.ai.asset.domain.dto.req.SkillUpdateRequest;
 import com.oriole.wisepen.ai.asset.domain.dto.req.SkillVersionPublishRequest;
 import com.oriole.wisepen.ai.asset.domain.dto.res.SkillAssetUploadInitResponse;
-import com.oriole.wisepen.ai.asset.domain.dto.res.SkillInfoResponse;
-import com.oriole.wisepen.ai.asset.domain.dto.res.SkillVersionInfoResponse;
+import com.oriole.wisepen.ai.asset.domain.dto.res.SkillResourceInfoResponse;
+import com.oriole.wisepen.ai.asset.domain.dto.res.SkillVersionBundleInfoResponse;
 import com.oriole.wisepen.ai.asset.exception.SkillError;
 import com.oriole.wisepen.ai.asset.service.ISkillService;
 import com.oriole.wisepen.ai.asset.service.ISkillVersionService;
@@ -95,31 +95,31 @@ public class SkillController {
                     """
     )
     @PostMapping("/getSkillInfo")
-    public R<SkillInfoResponse> getSkillInfo(@RequestParam String resourceId) {
+    public R<SkillResourceInfoResponse> getSkillInfo(@RequestParam String resourceId) {
         // 若无权限将抛出异常，此处无需重复鉴权
         ResourceItemResponse resourceInfo = remoteResourceService.getResourceInfo(new ResourceInfoGetReqDTO(
                 resourceId, SecurityContextHolder.getUserId(), SecurityContextHolder.getGroupRoleMap()
         )).getData();
         SkillInfoBase skillInfo = skillService.getSkillInfo(resourceId);
-        SkillInfoResponse skillInfoResponse = SkillInfoResponse.builder().resourceInfo(resourceInfo).skillInfo(skillInfo).build();
-        return R.ok(skillInfoResponse);
+        SkillResourceInfoResponse skillResourceInfoResponse = SkillResourceInfoResponse.builder().resourceInfo(resourceInfo).skillInfo(skillInfo).build();
+        return R.ok(skillResourceInfoResponse);
     }
 
     @Operation(
-            summary = "获取技能版本信息",
+            summary = "获取技能版本包信息",
             description = """
                     - 用途：查询技能资产指定版本或当前已发布版本的文件快照。
                     - 请求：resourceId 指定技能资产；version 为空时使用技能主档当前发布版本。
                     - 约束：当前用户必须是资源所有者；技能资产和目标版本必须存在。
                     - 处理：确定目标版本后读取版本记录及其资产文件列表；不生成下载地址，不改变草稿或发布状态。
                     - 失败：未登录 -> PermissionError.NOT_LOGIN；当前用户不是资源所有者 -> SkillError.SKILL_PERMISSION_DENIED；技能不存在 -> SkillError.SKILL_NOT_FOUND；版本不存在 -> SkillError.SKILL_VERSION_NOT_FOUND。
-                    - 响应：返回技能版本信息和资产文件元数据。
+                    - 响应：返回技能版本包信息和资产文件元数据。
                     """
     )
-    @PostMapping("/getSkillVersionInfo")
-    public R<SkillVersionInfoResponse> getSkillVersionInfo(@RequestParam String resourceId, Integer version) {
+    @PostMapping("/getSkillVersionBundleInfo")
+    public R<SkillVersionBundleInfoResponse> getSkillVersionBundleInfo(@RequestParam String resourceId, Integer version) {
         assertSkillOwner(resourceId);
-        return R.ok(skillVersionService.getSkillVersion(resourceId, version));
+        return R.ok(skillVersionService.getSkillVersionBundle(resourceId, version));
     }
 
     @Operation(

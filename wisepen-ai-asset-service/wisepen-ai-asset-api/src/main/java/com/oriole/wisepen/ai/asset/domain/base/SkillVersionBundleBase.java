@@ -12,7 +12,7 @@ import java.util.List;
 @Data
 @SuperBuilder
 @NoArgsConstructor
-public class SkillVersionBase {
+public class SkillVersionBundleBase {
     private Integer version;
     private SkillAssetInfoBase mainSkillMD;
     private SkillVersionStatus status;
