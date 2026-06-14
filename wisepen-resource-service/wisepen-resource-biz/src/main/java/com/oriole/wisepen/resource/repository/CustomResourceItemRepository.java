@@ -109,6 +109,11 @@ public class CustomResourceItemRepository {
         updateInteractionField(resourceId, "interactionInfo.favoriteCount", delta);
     }
 
+    /** 更新评论总数（顶级评论 + 所有回复） */
+    public void updateCommentCount(String resourceId, int delta) {
+        updateInteractionField(resourceId, "interactionInfo.commentCount", delta);
+    }
+
     public void updateFavoriteCount(List<String> resourceIds, int delta) {
         if (resourceIds.isEmpty()) return;
         Query query = Query.query(Criteria.where("_id").in(resourceIds));

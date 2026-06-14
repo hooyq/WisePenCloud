@@ -16,6 +16,8 @@ import com.oriole.wisepen.resource.domain.dto.req.ResourceUpdateActionPermission
 import com.oriole.wisepen.resource.domain.dto.res.ResourceItemResponse;
 import com.oriole.wisepen.resource.domain.entity.FavoriteResourceRef;
 import com.oriole.wisepen.resource.domain.entity.GroupResConfigEntity;
+import com.oriole.wisepen.resource.domain.entity.ResourceCommentEntity;
+import com.oriole.wisepen.resource.domain.entity.ResourceCommentReplyEntity;
 import com.oriole.wisepen.resource.domain.entity.ResourceItemEntity;
 import com.oriole.wisepen.resource.domain.entity.TagEntity;
 import com.oriole.wisepen.resource.enums.*;
@@ -545,6 +547,11 @@ public class ResourceServiceImpl implements IResourceService {
                 .map(ResourceItemEntity::getResourceId)
                 .collect(Collectors.toList());
             resourceUserInteractRecordRepository.deleteAllByResourceIdIn(deletedResourceIds);
+            // 软删除关联评论和回复，避免残留孤立数据
+            LocalDateTime commentSoftDeleteTime = LocalDateTime.now();
+            Criteria notYetDeleted = Criteria.where("resourceId").in(deletedResourceIds).and("deletedAt").is(null);
+            mongoTemplate.updateMulti(Query.query(notYetDeleted), new Update().set("deletedAt", commentSoftDeleteTime), ResourceCommentEntity.class);
+            mongoTemplate.updateMulti(Query.query(notYetDeleted), new Update().set("deletedAt", commentSoftDeleteTime), ResourceCommentReplyEntity.class);
             // 清理收藏集合中的孤立引用
             List<FavoriteResourceRef> deletedFavoriteRefs = favoriteResourceRefRepository.findByResourceIdIn(deletedResourceIds);
             // 扣减各个集合的收藏计数
