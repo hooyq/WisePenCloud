@@ -24,6 +24,7 @@ public class CustomResourceCommentRepository {
         this.mongoTemplate = mongoTemplate;
     }
 
+    /** 页码分页查询顶级评论，按创建时间或点赞数排序。 */
     public Page<ResourceCommentEntity> listCommentsByResourceId(String resourceId, CommentSortBy sortBy, Pageable pageable) {
         Criteria criteria = Criteria.where("resourceId").is(resourceId).and("commentType").is(CommentType.COMMENT);
         Query query = Query.query(criteria);
@@ -41,6 +42,7 @@ public class CustomResourceCommentRepository {
         return new PageImpl<>(list, pageable, total);
     }
 
+    /** 页码分页查询某顶级评论下的平铺回复列表，按创建时间倒序排序。 */
     public Page<ResourceCommentEntity> listRepliesByRootCommentId(String rootCommentId, Pageable pageable) {
         Criteria criteria = Criteria.where("rootCommentId").is(rootCommentId).and("commentType").ne(CommentType.COMMENT);
         Query query = Query.query(criteria).with(Sort.by(Sort.Direction.DESC, "createTime"));

@@ -41,14 +41,14 @@ public class CustomResourceUserInteractionRecordRepository {
         return findAndSetField(resourceId, userId, "score", score);
     }
 
-    /** 添加评论/回复 ID 到已点赞评论列表 */
+    /** 添加评论/回复统一 commentId 到已点赞评论列表 */
     public void addToLikedCommentIds(String resourceId, String userId, String commentId) {
         Query query = Query.query(Criteria.where("resourceId").is(resourceId).and("userId").is(userId));
         Update update = new Update().addToSet("likedCommentIds", commentId);
         mongoTemplate.upsert(query, update, ResourceUserInteractionRecordEntity.class);
     }
 
-    /** 从已点赞列表移除评论 /回复 ID */
+    /** 从已点赞列表移除评论/回复统一 commentId */
     public void pullFromLikedCommentIds(String resourceId, String userId, String commentId) {
         Query query = Query.query(Criteria.where("resourceId").is(resourceId).and("userId").is(userId));
         Update update = new Update().pull("likedCommentIds", commentId);
