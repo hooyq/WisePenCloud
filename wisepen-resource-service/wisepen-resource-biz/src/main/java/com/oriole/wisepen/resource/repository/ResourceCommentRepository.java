@@ -9,10 +9,8 @@ import java.util.Optional;
 
 public interface ResourceCommentRepository extends MongoRepository<ResourceCommentEntity, String> {
 
-    /** 查询单条未软删除评论，用于存在性校验与归属校验 */
     @Query("{ '_id': ?0, 'deletedAt': null }")
     Optional<ResourceCommentEntity> findByIdAndDeletedAtIsNull(String id);
 
-    /** 仅限资源清理任务使用，不在 API 查询路径中调用 */
-    List<ResourceCommentEntity> findByResourceId(String resourceId);
+    void deleteAllByResourceIdIn(List<String> resourceIds);
 }

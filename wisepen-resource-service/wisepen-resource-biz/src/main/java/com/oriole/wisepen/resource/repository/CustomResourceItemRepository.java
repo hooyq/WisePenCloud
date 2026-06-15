@@ -127,11 +127,7 @@ public class CustomResourceItemRepository {
         updateInteractionField(resourceId, "interactionInfo.favoriteCount", delta);
     }
 
-    /** 更新评论总数（顶级评论 + 所有回复） */
-    public void updateCommentCount(String resourceId, int delta) {
-        updateInteractionField(resourceId, "interactionInfo.commentCount", delta);
-    }
-
+    /** 批量更新收藏数 */
     public void updateFavoriteCount(List<String> resourceIds, int delta) {
         if (resourceIds.isEmpty()) return;
         Query query = Query.query(Criteria.where("_id").in(resourceIds));
@@ -139,6 +135,12 @@ public class CustomResourceItemRepository {
         mongoTemplate.updateMulti(query, update, ResourceItemEntity.class);
     }
 
+    /** 更新评论总数（顶级评论 + 所有回复） */
+    public void updateCommentCount(String resourceId, int delta) {
+        updateInteractionField(resourceId, "interactionInfo.commentCount", delta);
+    }
+
+    /** 更新评分 */
     public void updateScore(String resourceId, int scoreCountDelta, int scoreTotalDelta) {
         Query query = Query.query(Criteria.where("_id").is(resourceId));
         Update update = new Update()

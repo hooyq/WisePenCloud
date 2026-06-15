@@ -1,6 +1,7 @@
 package com.oriole.wisepen.resource.controller;
 
 import com.oriole.wisepen.common.core.context.SecurityContextHolder;
+import com.oriole.wisepen.common.core.domain.PageR;
 import com.oriole.wisepen.common.core.domain.R;
 import com.oriole.wisepen.common.core.domain.enums.BusinessType;
 import com.oriole.wisepen.common.log.annotation.Log;
@@ -9,9 +10,8 @@ import com.oriole.wisepen.resource.domain.dto.req.CreateCommentRequest;
 import com.oriole.wisepen.resource.domain.dto.req.CreateReplyRequest;
 import com.oriole.wisepen.resource.domain.dto.req.DeleteCommentItemRequest;
 import com.oriole.wisepen.resource.domain.dto.req.ToggleCommentLikeRequest;
-import com.oriole.wisepen.resource.domain.dto.res.CursorPageResponse;
-import com.oriole.wisepen.resource.domain.dto.res.ResourceCommentListItemResponse;
-import com.oriole.wisepen.resource.domain.dto.res.ResourceCommentReplyListItemResponse;
+import com.oriole.wisepen.resource.domain.dto.res.ResourceCommentItemResponse;
+import com.oriole.wisepen.resource.enums.CommentSortBy;
 import com.oriole.wisepen.resource.service.IResourceCommentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -54,11 +54,11 @@ public class ResourceCommentController {
             summary = "发布回复",
             description = """
                     - 用途：用户对某条顶级评论或某条回复进行回复。
-                    - 请求：parentId 为被回复目标的 ID（顶级评论 ID 或回复 ID）；replyToUserId 为被回复人用户 ID；content 不能为空；imageUrls 可选。
-                    - 约束：当前用户必须已登录；parentId 对应目标必须存在且未被软删除。
-                    - 处理：生成回复 ID 为 parentId_newObjectId；所属顶级评论 replyCount +1；资源 commentCount +1。
-                    - 失败：未登录 -> PermissionError.NOT_LOGIN；parentId 对应顶级评论不存在或已删除 -> ResourceError.COMMENT_NOT_FOUND；parentId 为回复 ID 时对应回复不存在或已删除 -> ResourceError.COMMENT_REPLY_PARENT_NOT_FOUND。
-                    - 响应：返回服务端生成的 replyId。
+                    - 请求：replyTo 为被回复目标的 commentId；content 不能为空；imageUrls 可选。
+                    - 约束：当前用户必须已登录；replyTo 对应目标必须存在且未被软删除。
+                    - 处理：创建统一评论文档，按父目标类型写入 commentType、rootCommentId、replyTo 和 replyToUserId；所属顶级评论 replyCount +1；资源 commentCount +1。
+                    - 失败：未登录 -> PermissionError.NOT_LOGIN；replyTo 对应目标不存在或已删除 -> ResourceError.COMMENT_REPLY_PARENT_NOT_FOUND；所属顶级评论不存在或已删除 -> ResourceError.COMMENT_NOT_FOUND。
+                    - 响应：返回服务端生成的 commentId。
                     """
     )
     @PostMapping("/createReply")
@@ -72,11 +72,11 @@ public class ResourceCommentController {
             summary = "删除评论或回复",
             description = """
                     - 用途：用户软删除自己发布的顶级评论或回复。
-                    - 请求：targetId 为 commentId（不含 _）或 replyId（含 _），Service 从 ID 格式推导操作目标类型。
+                    - 请求：commentId 为目标评论或回复的统一评论 ID。
                     - 约束：当前用户必须已登录；目标必须存在且未被软删除；操作人必须是该评论/回复的 authorId。
                     - 处理（顶级评论）：软删除评论；资源 commentCount -1；不级联删除回复。
                     - 处理（回复）：软删除回复；所属顶级评论 replyCount -1；资源 commentCount -1。
-                    - 失败：未登录 -> PermissionError.NOT_LOGIN；顶级评论不存在或已删除 -> ResourceError.COMMENT_NOT_FOUND；回复不存在或已删除 -> ResourceError.COMMENT_REPLY_NOT_FOUND；操作人非 authorId -> ResourceError.COMMENT_DELETE_ACCESS_DENIED。
+                    - 失败：未登录 -> PermissionError.NOT_LOGIN；目标评论或回复不存在或已删除 -> ResourceError.COMMENT_NOT_FOUND；操作人非 authorId -> ResourceError.COMMENT_DELETE_ACCESS_DENIED。
                     - 响应：成功时返回空结果。
                     """
     )
@@ -92,10 +92,10 @@ public class ResourceCommentController {
             summary = "切换评论点赞状态",
             description = """
                     - 用途：用户对顶级评论或回复进行点赞或取消点赞（切换语义）。
-                    - 请求：targetId 为目标评论/回复的 ID；无需传 targetType，Service 从 ID 格式推导。
+                    - 请求：commentId 为目标评论或回复的统一评论 ID。
                     - 约束：当前用户必须已登录；目标评论/回复必须存在且未被软删除。
                     - 处理：$addToSet/$pull 维护 likedCommentIds；同步 $inc 目标 likeCount。
-                    - 失败：未登录 -> PermissionError.NOT_LOGIN；顶级评论不存在或已删除 -> ResourceError.COMMENT_NOT_FOUND；回复不存在或已删除 -> ResourceError.COMMENT_REPLY_NOT_FOUND。
+                    - 失败：未登录 -> PermissionError.NOT_LOGIN；目标评论或回复不存在或已删除 -> ResourceError.COMMENT_NOT_FOUND。
                     - 响应：返回操作后的点赞状态（true 表示已点赞）。
                     """
     )
@@ -118,15 +118,12 @@ public class ResourceCommentController {
                     """
     )
     @GetMapping("/listComments")
-    public R<CursorPageResponse<ResourceCommentListItemResponse>> listComments(
+    public R<PageR<ResourceCommentItemResponse>> listComments(
             @NotBlank @RequestParam String resourceId,
-            @RequestParam(defaultValue = "TIME") String sortBy,
-            @RequestParam(required = false) Long cursorCreateTime,
-            @RequestParam(required = false) Integer cursorLikeCount,
+            @RequestParam CommentSortBy sortBy,
             @Min(1) @Max(50) @RequestParam(defaultValue = "10") int size,
             @Min(1) @RequestParam(defaultValue = "1") int page) {
-        String operatorUserId = SecurityContextHolder.getUserId().toString();
-        return R.ok(commentService.listComments(resourceId, sortBy, cursorCreateTime, cursorLikeCount, size, page, operatorUserId));
+        return R.ok(commentService.listComments(resourceId, sortBy, size, page));
     }
 
     @Operation(
@@ -141,12 +138,10 @@ public class ResourceCommentController {
                     """
     )
     @GetMapping("/listReplies")
-    public R<CursorPageResponse<ResourceCommentReplyListItemResponse>> listReplies(
+    public R<PageR<ResourceCommentItemResponse>> listReplies(
             @NotBlank @RequestParam String rootCommentId,
-            @RequestParam(required = false) Long cursorCreateTime,
             @Min(1) @Max(50) @RequestParam(defaultValue = "10") int size,
             @Min(1) @RequestParam(defaultValue = "1") int page) {
-        String operatorUserId = SecurityContextHolder.getUserId().toString();
-        return R.ok(commentService.listReplies(rootCommentId, cursorCreateTime, size, page, operatorUserId));
+        return R.ok(commentService.listReplies(rootCommentId, size, page));
     }
 }

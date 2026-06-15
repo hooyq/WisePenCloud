@@ -1,42 +1,33 @@
 package com.oriole.wisepen.resource.service.impl;
 
+import cn.hutool.core.bean.BeanUtil;
+import com.oriole.wisepen.common.core.domain.PageR;
 import com.oriole.wisepen.common.core.exception.ServiceException;
 import com.oriole.wisepen.resource.domain.dto.req.CreateCommentRequest;
 import com.oriole.wisepen.resource.domain.dto.req.CreateReplyRequest;
 import com.oriole.wisepen.resource.domain.dto.req.DeleteCommentItemRequest;
 import com.oriole.wisepen.resource.domain.dto.req.ToggleCommentLikeRequest;
-import com.oriole.wisepen.resource.domain.dto.res.CursorPageResponse;
-import com.oriole.wisepen.resource.domain.dto.res.ResourceCommentListItemResponse;
-import com.oriole.wisepen.resource.domain.dto.res.ResourceCommentReplyListItemResponse;
+import com.oriole.wisepen.resource.domain.dto.res.ResourceCommentItemResponse;
 import com.oriole.wisepen.resource.domain.entity.ResourceCommentEntity;
-import com.oriole.wisepen.resource.domain.entity.ResourceCommentReplyEntity;
 import com.oriole.wisepen.resource.domain.entity.ResourceItemEntity;
 import com.oriole.wisepen.resource.domain.entity.ResourceUserInteractionRecordEntity;
+import com.oriole.wisepen.resource.enums.CommentSortBy;
+import com.oriole.wisepen.resource.enums.CommentType;
 import com.oriole.wisepen.resource.exception.ResourceError;
-import com.oriole.wisepen.resource.repository.CustomResourceCommentRepository;
-import com.oriole.wisepen.resource.repository.CustomResourceCommentReplyRepository;
-import com.oriole.wisepen.resource.repository.CustomResourceItemRepository;
-import com.oriole.wisepen.resource.repository.CustomResourceUserInteractionRecordRepository;
-import com.oriole.wisepen.resource.repository.ResourceCommentRepository;
-import com.oriole.wisepen.resource.repository.ResourceCommentReplyRepository;
-import com.oriole.wisepen.resource.repository.ResourceItemRepository;
+import com.oriole.wisepen.resource.repository.*;
 import com.oriole.wisepen.resource.service.IResourceCommentService;
 import com.oriole.wisepen.user.api.domain.base.UserDisplayBase;
 import com.oriole.wisepen.user.api.feign.RemoteUserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.bson.types.ObjectId;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
-import java.time.Instant;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.stream.Collectors;
+import java.util.*;
 
 @Service
 @Slf4j
@@ -45,9 +36,8 @@ public class ResourceCommentServiceImpl implements IResourceCommentService {
 
     private final ResourceItemRepository resourceItemRepository;
     private final ResourceCommentRepository commentRepository;
-    private final ResourceCommentReplyRepository replyRepository;
+    private final ResourceUserInteractionRecordRepository resourceUserInteractionRecordRepository;
     private final CustomResourceCommentRepository customCommentRepository;
-    private final CustomResourceCommentReplyRepository customReplyRepository;
     private final CustomResourceItemRepository customResourceItemRepository;
     private final CustomResourceUserInteractionRecordRepository customInteractionRecordRepository;
     private final RemoteUserService remoteUserService;
@@ -57,270 +47,159 @@ public class ResourceCommentServiceImpl implements IResourceCommentService {
         String resourceId = request.getResourceId();
         ResourceItemEntity resource = resourceItemRepository.findById(resourceId)
                 .orElseThrow(() -> new ServiceException(ResourceError.RESOURCE_NOT_FOUND));
-        if (resource.getDeletedAt() != null) {
-            throw new ServiceException(ResourceError.RESOURCE_NOT_FOUND);
-        }
-        ResourceCommentEntity comment = new ResourceCommentEntity();
-        comment.setResourceId(resourceId);
-        comment.setAuthorId(operatorUserId);
-        comment.setContent(request.getContent());
-        comment.setImageUrls(request.getImageUrls());
-        ResourceCommentEntity saved = commentRepository.save(comment);
+        if (resource.getDeletedAt() != null) throw new ServiceException(ResourceError.RESOURCE_NOT_FOUND);
+
+        ResourceCommentEntity comment = ResourceCommentEntity.builder()
+                .resourceId(resourceId).authorId(operatorUserId)
+                .content(request.getContent()).imageUrls(request.getImageUrls())
+                .commentType(CommentType.COMMENT)
+                .build();
+        comment = commentRepository.save(comment);
+        // 新增资源评论计数
         customResourceItemRepository.updateCommentCount(resourceId, 1);
-        log.info("comment created. resourceId={} commentId={} authorId={}", resourceId, saved.getCommentId(), operatorUserId);
-        return saved.getCommentId();
+        log.info("comment created. resourceId={} commentId={} authorId={}", resourceId, comment.getCommentId(), operatorUserId);
+        return comment.getCommentId();
     }
 
     @Override
     public String createReply(CreateReplyRequest request, String operatorUserId) {
-        String parentId = request.getParentId();
-        // 从 parentId 推导 rootCommentId：取第一个 _ 前的部分
-        String rootCommentId = parentId.contains("_") ? parentId.substring(0, parentId.indexOf('_')) : parentId;
-
-        ResourceCommentEntity rootComment = commentRepository.findByIdAndDeletedAtIsNull(rootCommentId)
+        // 检查回复的Comment是否存在
+        ResourceCommentEntity replyToComment = commentRepository.findByIdAndDeletedAtIsNull(request.getReplyTo())
                 .orElseThrow(() -> new ServiceException(ResourceError.COMMENT_NOT_FOUND));
 
-        // parentId 含 _ 时还需校验父回复存在且未删除
-        if (parentId.contains("_")) {
-            replyRepository.findByIdAndDeletedAtIsNull(parentId)
-                    .orElseThrow(() -> new ServiceException(ResourceError.COMMENT_REPLY_PARENT_NOT_FOUND));
-        }
+        // 如果回复的Comment是COMMENT类型的，那么当前的Comment类型是REPLY_TO_COMMENT
+        // 如果回复的Comment是REPLY_TO_COMMENT、REPLY_TO_REPLY类型的，那么当前的Comment类型是REPLY_TO_REPLY
+        CommentType replyType = CommentType.COMMENT.equals(replyToComment.getCommentType()) ? CommentType.REPLY_TO_COMMENT : CommentType.REPLY_TO_REPLY;
 
-        String resourceId = rootComment.getResourceId();
-        // 生成回复 ID：parentId_newObjectId
-        String newObjectId = new ObjectId().toHexString();
-        String replyId = parentId + "_" + newObjectId;
+        // 如果当前的Comment类型是REPLY_COMMENT类型的，根为回复的Comment的CommentId
+        // 如果当前的Comment类型是RREPLY_TO_REPLY类型的，根为回复的Comment的RootCommentId
+        String rootCommentId = CommentType.REPLY_TO_COMMENT.equals(replyType) ? replyToComment.getCommentId() : replyToComment.getRootCommentId();
 
-        ResourceCommentReplyEntity reply = new ResourceCommentReplyEntity();
-        reply.setReplyId(replyId);
-        reply.setRootCommentId(rootCommentId);
-        reply.setResourceId(resourceId);
-        reply.setReplyToUserId(request.getReplyToUserId());
-        reply.setAuthorId(operatorUserId);
-        reply.setContent(request.getContent());
-        reply.setImageUrls(request.getImageUrls());
-        // @CreatedDate 不会自动填充；此处显式赋值保证 createTime 不为 null
-        reply.setCreateTime(LocalDateTime.now());
-        replyRepository.save(reply);
+        ResourceCommentEntity reply = ResourceCommentEntity.builder()
+                .resourceId(replyToComment.getResourceId()).authorId(operatorUserId)
+                .content(request.getContent()).imageUrls(request.getImageUrls())
+                .replyToUserId(replyToComment.getAuthorId()).replyTo(replyToComment.getCommentId()).rootCommentId(rootCommentId)
+                .commentType(replyType)
+                .build();
+        reply = commentRepository.save(reply);
 
+        // 新增评论回复计数
         customCommentRepository.updateReplyCount(rootCommentId, 1);
-        customResourceItemRepository.updateCommentCount(resourceId, 1);
-        log.info("reply created. resourceId={} rootCommentId={} replyId={} authorId={}", resourceId, rootCommentId, replyId, operatorUserId);
-        return replyId;
+        // 新增资源评论计数
+        customResourceItemRepository.updateCommentCount(replyToComment.getResourceId(), 1);
+
+        log.info("reply created. resourceId={} rootCommentId={} replyToCommentId={} commentId={} authorId={}",
+                replyToComment.getResourceId(), rootCommentId, replyToComment.getCommentId(), reply.getCommentId(), operatorUserId);
+        return reply.getCommentId();
     }
 
     @Override
     public void deleteCommentItem(DeleteCommentItemRequest request, String operatorUserId) {
-        String targetId = request.getTargetId();
-        if (targetId.contains("_")) {
-            // 删除回复
-            ResourceCommentReplyEntity reply = replyRepository.findByIdAndDeletedAtIsNull(targetId)
-                    .orElseThrow(() -> new ServiceException(ResourceError.COMMENT_REPLY_NOT_FOUND));
-            if (!reply.getAuthorId().equals(operatorUserId)) {
-                throw new ServiceException(ResourceError.COMMENT_DELETE_ACCESS_DENIED);
-            }
-            reply.setDeletedAt(LocalDateTime.now());
-            replyRepository.save(reply);
-            customCommentRepository.updateReplyCount(reply.getRootCommentId(), -1);
-            customResourceItemRepository.updateCommentCount(reply.getResourceId(), -1);
-            log.info("reply deleted. replyId={} operatorUserId={}", targetId, operatorUserId);
+        String commentId = request.getCommentId();
+        ResourceCommentEntity comment = commentRepository.findByIdAndDeletedAtIsNull(commentId)
+                .orElseThrow(() -> new ServiceException(ResourceError.COMMENT_NOT_FOUND));
+
+        // TODO: 管理员，资源所有者，评论者本人可以删除评论
+        if (!comment.getAuthorId().equals(operatorUserId)) {
+            throw new ServiceException(ResourceError.COMMENT_DELETE_ACCESS_DENIED);
+        }
+
+        comment.setDeletedAt(LocalDateTime.now());
+        commentRepository.save(comment);
+
+        // 减少资源评论计数
+        customResourceItemRepository.updateCommentCount(comment.getResourceId(), -1);
+
+        if (CommentType.COMMENT.equals(comment.getCommentType())) {
+            log.info("comment deleted. commentId={} operatorUserId={}", commentId, operatorUserId);
         } else {
-            // 删除顶级评论
-            ResourceCommentEntity comment = commentRepository.findByIdAndDeletedAtIsNull(targetId)
-                    .orElseThrow(() -> new ServiceException(ResourceError.COMMENT_NOT_FOUND));
-            if (!comment.getAuthorId().equals(operatorUserId)) {
-                throw new ServiceException(ResourceError.COMMENT_DELETE_ACCESS_DENIED);
-            }
-            comment.setDeletedAt(LocalDateTime.now());
-            commentRepository.save(comment);
+            // 如果被删除的是REPLY，还减少评论回复计数
             customResourceItemRepository.updateCommentCount(comment.getResourceId(), -1);
-            log.info("comment deleted. commentId={} operatorUserId={}", targetId, operatorUserId);
+            log.info("reply deleted. commentId={} rootCommentId={} replyToCommentId={} operatorUserId={}",
+                    commentId, comment.getRootCommentId(), comment.getReplyTo(), operatorUserId);
         }
     }
 
     @Override
     public boolean toggleLike(ToggleCommentLikeRequest request, String operatorUserId) {
-        String targetId = request.getTargetId();
-        boolean isReply = targetId.contains("_");
-        String resourceId;
-        if (isReply) {
-            ResourceCommentReplyEntity reply = replyRepository.findByIdAndDeletedAtIsNull(targetId)
-                    .orElseThrow(() -> new ServiceException(ResourceError.COMMENT_REPLY_NOT_FOUND));
-            resourceId = reply.getResourceId();
-        } else {
-            ResourceCommentEntity comment = commentRepository.findByIdAndDeletedAtIsNull(targetId)
-                    .orElseThrow(() -> new ServiceException(ResourceError.COMMENT_NOT_FOUND));
-            resourceId = comment.getResourceId();
-        }
+        String commentId = request.getCommentId();
+        ResourceCommentEntity comment = commentRepository.findByIdAndDeletedAtIsNull(commentId)
+                .orElseThrow(() -> new ServiceException(ResourceError.COMMENT_NOT_FOUND));
+        String resourceId = comment.getResourceId();
 
-        // 检查当前点赞状态：加载用户互动记录，判断 targetId 是否在 likedCommentIds
+        // 加载用户互动记录，判断 commentId 是否在 likedCommentIds
         ResourceUserInteractionRecordEntity record =
-                customInteractionRecordRepository.findInteractionRecord(resourceId, operatorUserId);
-        boolean alreadyLiked = record != null
-                && record.getLikedCommentIds() != null
-                && record.getLikedCommentIds().contains(targetId);
+                resourceUserInteractionRecordRepository.findByUserIdAndResourceId(operatorUserId, resourceId).orElse(null);
+        boolean alreadyLiked = record != null && record.getLikedCommentIds() != null && record.getLikedCommentIds().contains(commentId);
 
         if (alreadyLiked) {
-            customInteractionRecordRepository.pullFromLikedCommentIds(resourceId, operatorUserId, targetId);
-            if (isReply) customReplyRepository.updateLikeCount(targetId, -1);
-            else customCommentRepository.updateLikeCount(targetId, -1);
-            log.info("comment like removed. targetId={} resourceId={} operatorUserId={}", targetId, resourceId, operatorUserId);
+            customInteractionRecordRepository.pullFromLikedCommentIds(resourceId, operatorUserId, commentId);
+            customCommentRepository.updateLikeCount(commentId, -1); // 评论赞数减少
+            log.info("comment like removed. commentId={} resourceId={} operatorUserId={}", commentId, resourceId, operatorUserId);
             return false;
         } else {
-            customInteractionRecordRepository.addToLikedCommentIds(resourceId, operatorUserId, targetId);
-            if (isReply) customReplyRepository.updateLikeCount(targetId, 1);
-            else customCommentRepository.updateLikeCount(targetId, 1);
-            log.info("comment like added. targetId={} resourceId={} operatorUserId={}", targetId, resourceId, operatorUserId);
+            customInteractionRecordRepository.addToLikedCommentIds(resourceId, operatorUserId, commentId);
+            customCommentRepository.updateLikeCount(commentId, 1); // 评论赞数增加
+            log.info("comment like added. commentId={} resourceId={} operatorUserId={}", commentId, resourceId, operatorUserId);
             return true;
         }
     }
 
-    @Override
-    public CursorPageResponse<ResourceCommentListItemResponse> listComments(
-            String resourceId, String sortBy, Long cursorCreateTime, Integer cursorLikeCount,
-            int size, int page, String operatorUserId) {
-
-        size = Math.min(size, 50);
-
-        LocalDateTime cursorTime = cursorCreateTime != null
-                ? LocalDateTime.ofInstant(Instant.ofEpochMilli(cursorCreateTime), ZoneId.systemDefault())
-                : null;
-
-        List<ResourceCommentEntity> rawList;
-        if ("HOT".equalsIgnoreCase(sortBy)) {
-            rawList = customCommentRepository.listByResourceIdOrderByHotDesc(resourceId, cursorLikeCount, cursorTime, size);
-        } else {
-            rawList = customCommentRepository.listByResourceIdOrderByTimeDesc(resourceId, cursorTime, size);
+    // 远程批量请求评论者信息
+    private Map<Long, UserDisplayBase> fetchCommentAuthorsInfo(List<ResourceCommentEntity> entities) {
+        List<Long> ownerIds = entities.stream()
+                .map(ResourceCommentEntity::getAuthorId)
+                .filter(StringUtils::hasText)
+                .map(Long::valueOf).distinct().toList();
+        try {
+            Map<Long, UserDisplayBase> fetched = remoteUserService.getUserDisplayInfo(ownerIds).getData();
+            return fetched == null ? Collections.emptyMap() : fetched;
+        } catch (Exception e) {
+            log.warn("comment author info batch degraded. ownerCount={}", ownerIds.size(), e);
+            return Collections.emptyMap();
         }
-
-        boolean hasMore = rawList.size() > size;
-        List<ResourceCommentEntity> pageData = hasMore ? rawList.subList(0, size) : rawList;
-
-        // 批量查询用户信息，避免 N+1（authorId 由 createComment 强制设置，始终非 null）
-        Set<Long> authorIdSet = pageData.stream()
-                .filter(c -> c.getDeletedAt() == null)
-                .map(c -> Long.parseLong(c.getAuthorId()))
-                .collect(Collectors.toSet());
-        Map<Long, UserDisplayBase> userMap = authorIdSet.isEmpty()
-                ? Map.of()
-                : remoteUserService.getUserDisplayInfo(new ArrayList<>(authorIdSet)).getData();
-
-        // 批量获取当前用户点赞状态
-        ResourceUserInteractionRecordEntity interactionRecord =
-                customInteractionRecordRepository.findInteractionRecord(resourceId, operatorUserId);
-        Set<String> likedSet = (interactionRecord != null && interactionRecord.getLikedCommentIds() != null)
-                ? new HashSet<>(interactionRecord.getLikedCommentIds())
-                : Set.of();
-
-        List<ResourceCommentListItemResponse> list = pageData.stream().map(comment -> {
-            ResourceCommentListItemResponse item = new ResourceCommentListItemResponse();
-            item.setCommentId(comment.getCommentId());
-            item.setResourceId(comment.getResourceId());
-            item.setContent(comment.getContent());
-            item.setImageUrls(comment.getImageUrls());
-            item.setLikeCount(comment.getLikeCount());
-            item.setReplyCount(comment.getReplyCount());
-            item.setDeleted(comment.getDeletedAt() != null);
-            item.setCreateTime(comment.getCreateTime().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli());
-            item.setLiked(likedSet.contains(comment.getCommentId()));
-            if (comment.getDeletedAt() == null) {
-                item.setAuthorInfo(userMap.get(Long.parseLong(comment.getAuthorId())));
-            }
-            return item;
-        }).toList();
-
-        CursorPageResponse<ResourceCommentListItemResponse> response = new CursorPageResponse<>();
-        response.setList(list);
-        response.setHasMore(hasMore);
-        response.setPage(page);
-        if (!list.isEmpty()) {
-            ResourceCommentListItemResponse last = list.get(list.size() - 1);
-            response.setNextCursorCreateTime(last.getCreateTime());
-            if ("HOT".equalsIgnoreCase(sortBy)) {
-                response.setNextCursorLikeCount(pageData.get(pageData.size() - 1).getLikeCount());
-            }
-        }
-        return response;
     }
 
     @Override
-    public CursorPageResponse<ResourceCommentReplyListItemResponse> listReplies(
-            String rootCommentId, Long cursorCreateTime, int size, int page, String operatorUserId) {
+    public PageR<ResourceCommentItemResponse> listComments(String resourceId, CommentSortBy sortBy, int size, int page) {
+        Pageable pageable =  PageRequest.of(page - 1, size);
 
-        size = Math.min(size, 50);
+        Page<ResourceCommentEntity> resourceCommentEntities = customCommentRepository.listCommentsByResourceId(resourceId, sortBy, pageable);
 
-        LocalDateTime cursorTime = cursorCreateTime != null
-                ? LocalDateTime.ofInstant(Instant.ofEpochMilli(cursorCreateTime), ZoneId.systemDefault())
-                : null;
+        // 批量查询作者信息
+        Map<Long, UserDisplayBase> userMap = fetchCommentAuthorsInfo(resourceCommentEntities.toList());
 
-        List<ResourceCommentReplyEntity> rawList =
-                customReplyRepository.listByRootCommentIdOrderByTimeDesc(rootCommentId, cursorTime, size);
-
-        boolean hasMore = rawList.size() > size;
-        List<ResourceCommentReplyEntity> pageData = hasMore ? rawList.subList(0, size) : rawList;
-
-        // 收集所有需要查询的用户 ID（authorId + replyToUserId），去重后一次 Feign 调用
-        Set<Long> userIdSet = new HashSet<>();
-        // authorId/replyToUserId 由 createReply 强制设置，始终非 null
-        for (ResourceCommentReplyEntity reply : pageData) {
-            if (reply.getDeletedAt() == null) {
-                userIdSet.add(Long.parseLong(reply.getAuthorId()));
-                userIdSet.add(Long.parseLong(reply.getReplyToUserId()));
-            }
-        }
-        Map<Long, UserDisplayBase> userMap = userIdSet.isEmpty()
-                ? Map.of()
-                : remoteUserService.getUserDisplayInfo(new ArrayList<>(userIdSet)).getData();
-
-        // resourceId 由 createReply 强制写入（冗余字段），直接取首条即可
-        String resourceId = pageData.isEmpty() ? null : pageData.get(0).getResourceId();
-
-        Set<String> likedSet = Set.of();
-        if (resourceId != null) {
-            ResourceUserInteractionRecordEntity interactionRecord =
-                    customInteractionRecordRepository.findInteractionRecord(resourceId, operatorUserId);
-            if (interactionRecord != null && interactionRecord.getLikedCommentIds() != null) {
-                likedSet = new HashSet<>(interactionRecord.getLikedCommentIds());
-            }
-        }
-        final Set<String> finalLikedSet = likedSet;
-
-        List<ResourceCommentReplyListItemResponse> list = pageData.stream().map(reply -> {
-            ResourceCommentReplyListItemResponse item = new ResourceCommentReplyListItemResponse();
-            item.setReplyId(reply.getReplyId());
-            item.setRootCommentId(reply.getRootCommentId());
-            item.setParentReplyId(deriveParentReplyId(reply.getReplyId()));
-            item.setContent(reply.getContent());
-            item.setImageUrls(reply.getImageUrls());
-            item.setLikeCount(reply.getLikeCount());
-            item.setDeleted(reply.getDeletedAt() != null);
-            item.setCreateTime(reply.getCreateTime().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli());
-            item.setLiked(finalLikedSet.contains(reply.getReplyId()));
-            if (reply.getDeletedAt() == null) {
-                item.setAuthorInfo(userMap.get(Long.parseLong(reply.getAuthorId())));
-                item.setReplyToUserInfo(userMap.get(Long.parseLong(reply.getReplyToUserId())));
-            }
+        List<ResourceCommentItemResponse> responses = resourceCommentEntities.stream().map(entity -> {
+            ResourceCommentItemResponse item = BeanUtil.copyProperties(entity, ResourceCommentItemResponse.class);
+            item.setDeleted(entity.getDeletedAt() != null);
+            item.setAuthorInfo(userMap.get(Long.parseLong(entity.getAuthorId())));
             return item;
         }).toList();
 
-        CursorPageResponse<ResourceCommentReplyListItemResponse> response = new CursorPageResponse<>();
-        response.setList(list);
-        response.setHasMore(hasMore);
-        response.setPage(page);
-        if (!list.isEmpty()) {
-            response.setNextCursorCreateTime(list.get(list.size() - 1).getCreateTime());
-        }
-        return response;
+        PageR<ResourceCommentItemResponse> pageR = new PageR<>(resourceCommentEntities.getTotalElements(), page, size);
+        pageR.addAll(responses);
+        return pageR;
     }
 
-    /**
-     * 从 replyId 推导 parentReplyId：去掉最后一个 _<segment>
-     * 若只有一个 _ 则父节点为顶级评论，返回 null
-     */
-    private String deriveParentReplyId(String replyId) {
-        int lastUnderscore = replyId.lastIndexOf('_');
-        if (lastUnderscore < 0) return null;
-        String parent = replyId.substring(0, lastUnderscore);
-        return parent.contains("_") ? parent : null;
+    @Override
+    public PageR<ResourceCommentItemResponse> listReplies(String rootCommentId, int size, int page) {
+        Pageable pageable =  PageRequest.of(page - 1, size);
+
+        Page<ResourceCommentEntity> resourceCommentEntities = customCommentRepository.listRepliesByRootCommentId(rootCommentId, pageable);
+
+        // 批量查询作者信息
+        Map<Long, UserDisplayBase> userMap = fetchCommentAuthorsInfo(resourceCommentEntities.toList());
+
+        List<ResourceCommentItemResponse> responses = resourceCommentEntities.stream().map(entity -> {
+            ResourceCommentItemResponse item = BeanUtil.copyProperties(entity, ResourceCommentItemResponse.class);
+            item.setDeleted(entity.getDeletedAt() != null);
+            item.setAuthorInfo(userMap.get(Long.parseLong(entity.getAuthorId())));
+            item.setReplyToUserInfo(userMap.get(Long.parseLong(entity.getReplyToUserId())));
+            return item;
+        }).toList();
+
+        PageR<ResourceCommentItemResponse> pageR = new PageR<>(resourceCommentEntities.getTotalElements(), page, size);
+        pageR.addAll(responses);
+        return pageR;
     }
 }

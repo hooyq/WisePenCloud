@@ -22,9 +22,6 @@ public interface FavoriteResourceRefRepository extends MongoRepository<FavoriteR
     @Query("{ 'userId': ?0, 'collectionIds': ?1 }")
     List<FavoriteResourceRef> findByUserIdAndCollectionId(String userId, String collectionId);
 
-    @Query(value = "{ 'userId': ?0, 'collectionIds': ?1 }", count = true)
-    long countByUserIdAndCollectionId(String userId, String collectionId);
-
     List<FavoriteResourceRef> findByResourceIdIn(Collection<String> resourceIds);
 
     void deleteByResourceIdIn(Collection<String> resourceIds);

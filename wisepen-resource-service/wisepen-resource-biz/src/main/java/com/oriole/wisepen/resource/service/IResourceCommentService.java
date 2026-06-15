@@ -1,12 +1,12 @@
 package com.oriole.wisepen.resource.service;
 
+import com.oriole.wisepen.common.core.domain.PageR;
 import com.oriole.wisepen.resource.domain.dto.req.CreateCommentRequest;
 import com.oriole.wisepen.resource.domain.dto.req.CreateReplyRequest;
 import com.oriole.wisepen.resource.domain.dto.req.DeleteCommentItemRequest;
 import com.oriole.wisepen.resource.domain.dto.req.ToggleCommentLikeRequest;
-import com.oriole.wisepen.resource.domain.dto.res.CursorPageResponse;
-import com.oriole.wisepen.resource.domain.dto.res.ResourceCommentListItemResponse;
-import com.oriole.wisepen.resource.domain.dto.res.ResourceCommentReplyListItemResponse;
+import com.oriole.wisepen.resource.domain.dto.res.ResourceCommentItemResponse;
+import com.oriole.wisepen.resource.enums.CommentSortBy;
 
 public interface IResourceCommentService {
 
@@ -18,10 +18,7 @@ public interface IResourceCommentService {
 
     boolean toggleLike(ToggleCommentLikeRequest request, String operatorUserId);
 
-    CursorPageResponse<ResourceCommentListItemResponse> listComments(
-            String resourceId, String sortBy, Long cursorCreateTime, Integer cursorLikeCount,
-            int size, int page, String operatorUserId);
+    PageR<ResourceCommentItemResponse> listComments(String resourceId, CommentSortBy sortBy, int size, int page);
 
-    CursorPageResponse<ResourceCommentReplyListItemResponse> listReplies(
-            String rootCommentId, Long cursorCreateTime, int size, int page, String operatorUserId);
+    PageR<ResourceCommentItemResponse> listReplies(String rootCommentId, int size, int page);
 }

@@ -1,20 +1,33 @@
 package com.oriole.wisepen.resource.domain.base;
 
+import com.oriole.wisepen.resource.enums.CommentType;
 import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
-import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 
-/**
- * 顶级评论 Base 类，存储集合 wisepen_resource_comments
- */
-@EqualsAndHashCode(callSuper = true)
+import java.util.ArrayList;
+import java.util.List;
+
 @Data
 @SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
-public class ResourceCommentBase extends ResourceCommentContentBase {
+public class ResourceCommentBase {
     private String resourceId;
+
+    private String replyToUserId;
+
+    private String authorId;
+    private String content;
+    @Builder.Default
+    private List<String> imageUrls = new ArrayList<>();
+
+    @Builder.Default
+    private Integer likeCount = 0;
+    @Builder.Default
     private Integer replyCount = 0;
+
+    private CommentType commentType;
 }

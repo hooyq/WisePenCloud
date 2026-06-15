@@ -5,7 +5,7 @@ import lombok.Data;
 
 @Data
 public class ToggleCommentLikeRequest {
-    /** 顶级评论 ID（纯 ObjectId）或回复 ID（含 _） */
+    /** 评论或回复的统一评论 ID */
     @NotBlank
-    private String targetId;
+    private String commentId;
 }

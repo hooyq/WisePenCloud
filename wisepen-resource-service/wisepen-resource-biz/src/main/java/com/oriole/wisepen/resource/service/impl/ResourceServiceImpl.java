@@ -16,8 +16,6 @@ import com.oriole.wisepen.resource.domain.dto.req.ResourceUpdateActionPermission
 import com.oriole.wisepen.resource.domain.dto.res.ResourceItemResponse;
 import com.oriole.wisepen.resource.domain.entity.FavoriteResourceRef;
 import com.oriole.wisepen.resource.domain.entity.GroupResConfigEntity;
-import com.oriole.wisepen.resource.domain.entity.ResourceCommentEntity;
-import com.oriole.wisepen.resource.domain.entity.ResourceCommentReplyEntity;
 import com.oriole.wisepen.resource.domain.entity.ResourceItemEntity;
 import com.oriole.wisepen.resource.domain.entity.TagEntity;
 import com.oriole.wisepen.resource.enums.*;
@@ -25,13 +23,7 @@ import com.oriole.wisepen.resource.event.TagChangedEvent;
 import com.oriole.wisepen.resource.event.TagDeletedEvent;
 import com.oriole.wisepen.resource.event.TagTrashedEvent;
 import com.oriole.wisepen.resource.exception.ResourceError;
-import com.oriole.wisepen.resource.repository.CustomResourceItemRepository;
-import com.oriole.wisepen.resource.repository.CustomFavoriteCollectionRepository;
-import com.oriole.wisepen.resource.repository.FavoriteResourceRefRepository;
-import com.oriole.wisepen.resource.repository.GroupResConfigRepository;
-import com.oriole.wisepen.resource.repository.ResourceItemRepository;
-import com.oriole.wisepen.resource.repository.ResourceUserInteractionRecordRepository;
-import com.oriole.wisepen.resource.repository.TagRepository;
+import com.oriole.wisepen.resource.repository.*;
 import com.oriole.wisepen.resource.mq.IResourceEventPublisher;
 import com.oriole.wisepen.resource.service.assembler.ResourceItemResponseAssembler;
 import com.oriole.wisepen.resource.service.IGroupResService;
@@ -73,6 +65,7 @@ public class ResourceServiceImpl implements IResourceService {
     private final ResourceUserInteractionRecordRepository resourceUserInteractRecordRepository;
     private final FavoriteResourceRefRepository favoriteResourceRefRepository;
     private final CustomFavoriteCollectionRepository customFavoriteCollectionRepository;
+    private final ResourceCommentRepository resourceCommentRepository;
 
     private final IResourceEventPublisher eventPublisher;
     private final MongoTemplate mongoTemplate;
@@ -418,16 +411,18 @@ public class ResourceServiceImpl implements IResourceService {
         if (expiredResources.isEmpty()) return;
 
         long deletedCount = mongoTemplate.remove(query, RESOURCE_TRASH_COLLECTION).getDeletedCount();
+
         if (deletedCount > 0) {
             List<String> deletedResourceIds = expiredResources.stream()
                 .map(ResourceItemEntity::getResourceId)
                 .collect(Collectors.toList());
+
+            // 清理评论集合中的孤立数据
+            resourceCommentRepository.deleteAllByResourceIdIn(deletedResourceIds);
+
+            // 清理资源对应的用户行为记录表
             resourceUserInteractRecordRepository.deleteAllByResourceIdIn(deletedResourceIds);
-            // 软删除关联评论和回复，避免残留孤立数据
-            LocalDateTime commentSoftDeleteTime = LocalDateTime.now();
-            Criteria notYetDeleted = Criteria.where("resourceId").in(deletedResourceIds).and("deletedAt").is(null);
-            mongoTemplate.updateMulti(Query.query(notYetDeleted), new Update().set("deletedAt", commentSoftDeleteTime), ResourceCommentEntity.class);
-            mongoTemplate.updateMulti(Query.query(notYetDeleted), new Update().set("deletedAt", commentSoftDeleteTime), ResourceCommentReplyEntity.class);
+
             // 清理收藏集合中的孤立引用
             List<FavoriteResourceRef> deletedFavoriteRefs = favoriteResourceRefRepository.findByResourceIdIn(deletedResourceIds);
             // 扣减各个集合的收藏计数
@@ -441,14 +436,17 @@ public class ResourceServiceImpl implements IResourceService {
             for (Map.Entry<String, Integer> entry: collectionCountDeltas.entrySet()) {
                 customFavoriteCollectionRepository.updateItemCount(Set.of(entry.getKey()), entry.getValue());
             }
+            // 清理资源对应的收藏行为记录表
             favoriteResourceRefRepository.deleteByResourceIdIn(deletedResourceIds);
 
-            log.info("resources deleted. mode=hard count={} resourceIds={}",
-                    deletedCount, summarizeIds(resourceIds));
-            // 删除索引
+            // 删除搜索索引
             for (ResourceItemEntity resource : expiredResources) {
                 searchSyncService.deleteResourceIndex(resource.getResourceId());
             }
+
+            log.info("resources deleted. mode=hard count={} resourceIds={}",
+                    deletedCount, summarizeIds(resourceIds));
+
             // 发送 Kafka 广播，通知文件存储等下游微服务抹除物理文件
             eventPublisher.publishResDeletedEvent(expiredResources);
         }
