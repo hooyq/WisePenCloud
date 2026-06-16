@@ -1,7 +1,7 @@
 package com.oriole.wisepen.file.storage.service;
 
 import com.oriole.wisepen.file.storage.api.domain.dto.StorageRecordDTO;
-import com.oriole.wisepen.file.storage.api.domain.dto.StorageCopyRequest;
+import com.oriole.wisepen.file.storage.api.domain.dto.CopyReqDTO;
 import com.oriole.wisepen.file.storage.api.domain.dto.UploadInitReqDTO;
 import com.oriole.wisepen.file.storage.api.domain.dto.StsTokenDTO;
 import com.oriole.wisepen.file.storage.api.domain.dto.UploadInitRespDTO;
@@ -22,7 +22,7 @@ public interface IStorageService {
     /**
      * 复制已有文件对象并创建独立存储记录
      */
-    StorageRecordDTO copyObject(StorageCopyRequest req);
+    StorageRecordDTO copyFile(CopyReqDTO req);
 
     /**
      * 小文件代理上传

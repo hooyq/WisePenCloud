@@ -12,7 +12,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.oriole.wisepen.common.core.exception.ServiceException;
 import com.oriole.wisepen.file.storage.api.domain.base.StorageRecordBase;
 import com.oriole.wisepen.file.storage.api.domain.base.UploadUrlBase;
-import com.oriole.wisepen.file.storage.api.domain.dto.StorageCopyRequest;
+import com.oriole.wisepen.file.storage.api.domain.dto.CopyReqDTO;
 import com.oriole.wisepen.file.storage.api.domain.dto.StorageRecordDTO;
 import com.oriole.wisepen.file.storage.api.domain.dto.UploadInitReqDTO;
 import com.oriole.wisepen.file.storage.api.domain.dto.StsTokenDTO;
@@ -105,27 +105,33 @@ public class StorageServiceImpl implements IStorageService {
         return this.getPutUrl(req.getScene(), newObjectKey, provider);
     }
 
-    @Override
-    @Transactional(rollbackFor = Exception.class)
-    public StorageRecordDTO copyObject(StorageCopyRequest req) {
-        StorageRecordEntity sourceRecord = storageRecordMapper.selectOne(
+    private StorageRecordEntity getStorageRecordWithCompensateStatus(String ObjectKey){
+        StorageRecordEntity entity = storageRecordMapper.selectOne(
                 Wrappers.<StorageRecordEntity>lambdaQuery()
-                        .eq(StorageRecordEntity::getObjectKey, req.getSourceObjectKey())
+                        .eq(StorageRecordEntity::getObjectKey,ObjectKey)
                         .ne(StorageRecordEntity::getStatus, StorageStatusEnum.DELETED)
                         .last("LIMIT 1")
         );
-        if (sourceRecord == null) {
-            throw new ServiceException(FileStorageError.FILE_RECORD_NOT_FOUND);
-        }
-        if (!StorageStatusEnum.AVAILABLE.equals(sourceRecord.getStatus())) {
-            StorageRecordDTO compensated = this.compensateStatus(sourceRecord);
-            if (compensated == null) {
-                throw new ServiceException(FileStorageError.FILE_RECORD_NOT_FOUND);
-            }
-            sourceRecord = storageRecordMapper.selectById(compensated.getFileId());
-        }
+        if (entity == null) throw new ServiceException(FileStorageError.FILE_RECORD_NOT_FOUND);
 
+        // 检查补偿
+        if (StorageStatusEnum.UPLOADING.equals(entity.getStatus())) {
+            StorageRecordDTO dto = this.compensateStatus(entity);
+            if (dto == null) throw new ServiceException(FileStorageError.FILE_RECORD_NOT_FOUND);
+            entity = storageRecordMapper.selectById(dto.getFileId());
+        }
+        return entity;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public StorageRecordDTO copyFile(CopyReqDTO req) {
+        StorageRecordEntity sourceRecord = getStorageRecordWithCompensateStatus(req.getSourceObjectKey());
+
+        // 同源复制
         StorageProvider provider = storageManager.getProvider(sourceRecord.getConfigId());
+
+        // 根据请求的 Scene 和 BizTag 重新构建 ObjectKey
         String extension = FileUtil.extName(sourceRecord.getObjectKey()).toLowerCase();
         String targetObjectKey = buildObjectKey(req.getScene().getPrefix(), req.getBizTag(), extension);
 
@@ -133,12 +139,9 @@ public class StorageServiceImpl implements IStorageService {
             provider.copyObject(sourceRecord.getObjectKey(), targetObjectKey);
 
             StorageRecordEntity targetRecord = StorageRecordEntity.builder()
-                    .objectKey(targetObjectKey)
-                    .md5(sourceRecord.getMd5())
-                    .size(sourceRecord.getSize())
-                    .configId(sourceRecord.getConfigId())
+                    .objectKey(targetObjectKey).scene(req.getScene())
+                    .md5(sourceRecord.getMd5()).size(sourceRecord.getSize()).configId(sourceRecord.getConfigId())
                     .status(StorageStatusEnum.AVAILABLE)
-                    .scene(req.getScene())
                     .build();
             storageRecordMapper.insert(targetRecord);
 
@@ -147,9 +150,10 @@ public class StorageServiceImpl implements IStorageService {
             return dto;
         } catch (Exception e) {
             try {
+                // 失败时回滚
                 provider.deleteObject(targetObjectKey);
             } catch (Exception cleanupEx) {
-                log.warn("复制文件落库失败后清理 OSS 对象失败 objectKey={}", targetObjectKey, cleanupEx);
+                log.warn("clean object after copy failure failed. objectKey={}", targetObjectKey, cleanupEx);
             }
             throw e;
         }
@@ -197,21 +201,7 @@ public class StorageServiceImpl implements IStorageService {
 
     @Override
     public String getDownloadUrl(String objectKey, Long durationSeconds) {
-        StorageRecordEntity record = storageRecordMapper.selectOne(
-                Wrappers.<StorageRecordEntity>lambdaQuery()
-                        .eq(StorageRecordEntity::getObjectKey, objectKey)
-                        .ne(StorageRecordEntity::getStatus, StorageStatusEnum.DELETED)
-                        .last("LIMIT 1")
-        );
-        if (record == null) {
-            throw new ServiceException(FileStorageError.FILE_RECORD_NOT_FOUND);
-        }
-        if (StorageStatusEnum.UPLOADING.equals(record.getStatus())) {
-            StorageRecordDTO storageRecordDTO = this.compensateStatus(record);
-            if (storageRecordDTO == null) {
-                throw new ServiceException(FileStorageError.FILE_RECORD_NOT_FOUND);
-            }
-        }
+        StorageRecordEntity record = getStorageRecordWithCompensateStatus(objectKey);
 
         StorageProvider provider = storageManager.getProvider(record.getConfigId());
         return provider.generateDownloadUrl(objectKey, durationSeconds);

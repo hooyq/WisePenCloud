@@ -92,70 +92,70 @@ public class NoteServiceImpl implements INoteService {
 
     @Override
     public void forkNote(ResourceForkMessage msg) {
+        String targetNoteId = msg.getForkTaskId();
+
+        // TODO:防止Fork任务重复执行
+
+        // 检索待复制项
         NoteInfoEntity sourceInfo = noteDocumentRepository.findByResourceId(msg.getSourceResourceId())
                 .orElseThrow(() -> new ServiceException(NoteError.NOTE_NOT_FOUND));
 
         List<NoteVersionEntity> sourceVersions = new ArrayList<>();
-        Long latestFullVersion = 0L;
-        Optional<NoteVersionEntity> latestFull = noteVersionRepository
-                .findFirstByResourceIdAndTypeAndVersionLessThanEqualOrderByVersionDesc(
-                        msg.getSourceResourceId(), VersionType.FULL, msg.getVersion());
-        if (latestFull.isPresent()) {
-            NoteVersionEntity fullVersion = latestFull.get();
-            sourceVersions.add(fullVersion);
-            latestFullVersion = fullVersion.getVersion();
-        }
-        sourceVersions.addAll(noteVersionRepository
-                .findByResourceIdAndVersionGreaterThanAndVersionLessThanEqualAndTypeOrderByVersionAsc(
-                        msg.getSourceResourceId(), latestFullVersion, msg.getVersion(), VersionType.DELTA));
 
+        // 向 resource 服务注册 Forked 资源
         String targetResourceId;
         try {
             targetResourceId = remoteResourceService.createResource(ResourceCreateReqDTO.builder()
-                    .resourceName(msg.getResourceName())
+                    .resourceName(msg.getForkedResourceName())
                     .resourceType(ResourceType.NOTE)
-                    .ownerId(msg.getBuyerId().toString())
-                    .preview(msg.getPreview())
-                    .size(msg.getSize())
-                    .build()).getData();
+                    .ownerId(msg.getForkedResourceOwnerId().toString())
+                    .build()
+            ).getData();
         } catch (Exception e) {
-            log.error("noteResourceCreate failed forkTaskId={} sourceResourceId={}",
-                    msg.getForkTaskId(), msg.getSourceResourceId(), e);
+            log.error("note resource register failed. dependency=resourceService", e);
             throw new ServiceException(NoteError.NOTE_REGISTER_RESOURCE_FAILED, e.getMessage());
         }
 
         try {
-            LocalDateTime now = LocalDateTime.now();
-            List<Long> authors = List.of(msg.getBuyerId());
-            noteDocumentRepository.save(NoteInfoEntity.builder()
+            // 建立文档元信息
+            NoteInfoEntity targetInfo = NoteInfoEntity.builder()
                     .resourceId(targetResourceId)
-                    .lastUpdatedAt(now)
-                    .authors(authors)
+                    .authors(sourceInfo.getAuthors())
                     .plainText(sourceInfo.getPlainText())
-                    .build());
+                    .build();
+            noteDocumentRepository.save(targetInfo);
+
+            // 复制 笔记内容
+            // 查询指定资源在指定版本号（含）之前的最新 FULL 版本记录
+            Optional<NoteVersionEntity> latestFull = noteVersionRepository
+                    .findFirstByResourceIdAndTypeAndVersionLessThanEqualOrderByVersionDesc(
+                            msg.getSourceResourceId(), VersionType.FULL, msg.getForkedResourceVersion());
+
+            Long latestFullVersion = 0L;
+            if (latestFull.isPresent()) { // 存在这样的 FULL 版本
+                sourceVersions.add(latestFull.get());
+                latestFullVersion = latestFull.get().getVersion();
+            }
+            // 查询指定资源在指定版本号区间内（从当前版本到最近的 FULL 版本）的所有 DELTA 版本记录，并按版本号升序排列
+            // 如果没有最近的 FULL 版本，则到 0
+            sourceVersions.addAll(noteVersionRepository
+                    .findByResourceIdAndVersionGreaterThanAndVersionLessThanEqualAndTypeOrderByVersionAsc(
+                            msg.getSourceResourceId(), latestFullVersion, msg.getForkedResourceVersion(), VersionType.DELTA));
 
             if (!sourceVersions.isEmpty()) {
-                List<NoteVersionEntity> targetVersions = new ArrayList<>();
-                for (NoteVersionEntity sourceVersion : sourceVersions) {
-                    targetVersions.add(NoteVersionEntity.builder()
-                            .resourceId(targetResourceId)
-                            .version(sourceVersion.getVersion())
-                            .type(sourceVersion.getType())
-                            .label(sourceVersion.getLabel())
-                            .createdAt(now)
-                            .createdBy(authors)
-                            .data(new Binary(sourceVersion.getData().getData()))
-                            .build());
-                }
+                List<NoteVersionEntity> targetVersions = sourceVersions.stream()
+                        .peek(sourceVersion->sourceVersion.setResourceId(targetResourceId)).toList();
                 noteVersionRepository.saveAll(targetVersions);
             }
-            log.info("noteFork created forkTaskId={} sourceResourceId={} resourceId={} version={}",
-                    msg.getForkTaskId(), msg.getSourceResourceId(), targetResourceId, msg.getVersion());
+
+            log.info("note fork finished. sourceResourceId={} resourceId={} version={}",
+                    msg.getSourceResourceId(), targetResourceId, msg.getForkedResourceVersion());
         } catch (Exception e) {
+            // 异常时回滚
             noteVersionRepository.deleteByResourceIdIn(List.of(targetResourceId));
             noteDocumentRepository.deleteById(targetResourceId);
-            log.warn("noteFork compensated forkTaskId={} sourceResourceId={} resourceId={}",
-                    msg.getForkTaskId(), msg.getSourceResourceId(), targetResourceId, e);
+            log.warn("note fork compensated. sourceResourceId={} resourceId={}",
+                    msg.getSourceResourceId(), targetResourceId, e);
             throw new ServiceException(NoteError.NOTE_FORK_FAILED, e.getMessage());
         }
     }

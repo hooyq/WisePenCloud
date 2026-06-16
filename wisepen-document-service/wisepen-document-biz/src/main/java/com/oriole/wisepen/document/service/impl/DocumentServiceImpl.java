@@ -22,7 +22,7 @@ import com.oriole.wisepen.document.repository.DocumentContentRepository;
 import com.oriole.wisepen.document.repository.DocumentInfoRepository;
 import com.oriole.wisepen.document.repository.DocumentPdfMetaRepository;
 import com.oriole.wisepen.document.service.IDocumentService;
-import com.oriole.wisepen.file.storage.api.domain.dto.StorageCopyRequest;
+import com.oriole.wisepen.file.storage.api.domain.dto.CopyReqDTO;
 import com.oriole.wisepen.file.storage.api.domain.dto.StorageRecordDTO;
 import com.oriole.wisepen.file.storage.api.domain.dto.UploadInitReqDTO;
 import com.oriole.wisepen.file.storage.api.domain.dto.UploadInitRespDTO;
@@ -35,6 +35,7 @@ import com.oriole.wisepen.resource.feign.RemoteResourceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -321,59 +322,65 @@ public class DocumentServiceImpl implements IDocumentService {
     }
 
     @Override
+    @Transactional
     public void forkDocument(ResourceForkMessage msg) {
         String targetDocumentId = msg.getForkTaskId();
+
+        // 防止Fork任务重复执行
         DocumentInfoEntity existingTarget = documentInfoRepository.findById(targetDocumentId).orElse(null);
-        if (existingTarget != null) {
-            return;
-        }
+        if (existingTarget != null) return;
+
+        // 检索待复制项
         DocumentInfoEntity sourceInfo = documentInfoRepository.findByResourceId(msg.getSourceResourceId())
                 .orElseThrow(() -> new ServiceException(DocumentError.DOCUMENT_NOT_FOUND));
+        // 待复制项必须已经就绪
         if (sourceInfo.getDocumentStatus() == null || sourceInfo.getDocumentStatus().getStatus() != DocumentStatusEnum.READY) {
             throw new ServiceException(DocumentError.DOCUMENT_PREVIEW_NOT_READY);
         }
 
         List<String> copiedObjectKeys = new ArrayList<>();
         try {
-            StorageRecordDTO copied = remoteStorageService.copyObject(StorageCopyRequest.builder()
+            // 复制 Source Object
+            StorageRecordDTO copied = remoteStorageService.copyFile(CopyReqDTO.builder()
                     .sourceObjectKey(sourceInfo.getSourceObjectKey())
                     .scene(StorageSceneEnum.PRIVATE_DOC)
                     .bizTag(targetDocumentId)
                     .build()).getData();
             copiedObjectKeys.add(copied.getObjectKey());
 
-            copied = remoteStorageService.copyObject(StorageCopyRequest.builder()
+            // 复制 Preview Object
+            copied = remoteStorageService.copyFile(CopyReqDTO.builder()
                     .sourceObjectKey(sourceInfo.getPreviewObjectKey())
                     .scene(StorageSceneEnum.PRIVATE_DOC)
                     .bizTag(targetDocumentId)
                     .build()).getData();
             copiedObjectKeys.add(copied.getObjectKey());
         } catch (Exception e) {
+            // 遇到错误时回滚复制
             if (!copiedObjectKeys.isEmpty()) {
                 eventPublisher.publishFileDeleteEvent(copiedObjectKeys);
             }
-            log.warn("documentFork compensated forkTaskId={} sourceResourceId={} documentId={}",
-                    msg.getForkTaskId(), msg.getSourceResourceId(), targetDocumentId, e);
+            log.warn("document fork compensated. sourceResourceId={} documentId={}",
+                    msg.getSourceResourceId(), targetDocumentId, e);
             throw new ServiceException(DocumentError.DOCUMENT_FORK_FAILED, e.getMessage());
         }
 
         try {
+            // 复制 文档内容
             DocumentContentEntity sourceContent = documentContentRepository.findById(sourceInfo.getDocumentId())
-                    .orElseThrow(() -> new ServiceException(DocumentError.DOCUMENT_FORK_FAILED, "source document content missing"));
-            String content = sourceContent.getRawText();
-            documentContentRepository.save(DocumentContentEntity.builder()
-                    .documentId(targetDocumentId)
-                    .rawText(content)
-                    .build());
+                    .orElseThrow(() -> new ServiceException(DocumentError.DOCUMENT_FORK_FAILED));
+            DocumentContentEntity targetContent = BeanUtil.copyProperties(sourceContent, DocumentContentEntity.class, "createTime");
+            targetContent.setDocumentId(targetDocumentId);
+            documentContentRepository.save(targetContent);
 
-            documentPdfMetaRepository.findById(sourceInfo.getDocumentId())
-                    .map(sourceMeta -> {
-                        DocumentPdfMetaEntity targetMeta = BeanUtil.copyProperties(sourceMeta, DocumentPdfMetaEntity.class);
-                        targetMeta.setDocumentId(targetDocumentId);
-                        return targetMeta;
-                    })
-                    .ifPresent(documentPdfMetaRepository::save);
+            // 复制 Pdf Meta 信息
+            DocumentPdfMetaEntity sourcePdfMeta = documentPdfMetaRepository.findById(sourceInfo.getDocumentId())
+                    .orElseThrow(() -> new ServiceException(DocumentError.DOCUMENT_FORK_FAILED));
+            DocumentPdfMetaEntity targetPdfMeta = BeanUtil.copyProperties(sourcePdfMeta, DocumentPdfMetaEntity.class);
+            targetPdfMeta.setDocumentId(targetDocumentId);
+            documentPdfMetaRepository.save(targetPdfMeta);
 
+            // 建立文档元信息
             DocumentInfoEntity targetInfo = DocumentInfoEntity.builder()
                     .documentId(targetDocumentId)
                     .sourceObjectKey(copiedObjectKeys.getFirst())
@@ -384,28 +391,39 @@ public class DocumentServiceImpl implements IDocumentService {
                     .build();
             documentInfoRepository.save(targetInfo);
 
-            String resourceId = remoteResourceService.createResource(ResourceCreateReqDTO.builder()
-                    .resourceName(msg.getResourceName())
-                    .resourceType(msg.getResourceType())
-                    .ownerId(msg.getBuyerId().toString())
-                    .preview(msg.getPreview())
-                    .size(sourceInfo.getUploadMeta().getSize())
-                    .build()).getData();
-            documentInfoRepository.updateResourceIdById(targetDocumentId, resourceId);
+            // 向 resource 服务注册 Forked 资源
+            String resourceId;
+            try {
+                resourceId = remoteResourceService.createResource(
+                        ResourceCreateReqDTO.builder()
+                                .resourceName(msg.getForkedResourceName())
+                                .resourceType(msg.getSourceResourceType())
+                                .ownerId(msg.getForkedResourceOwnerId().toString())
+                                .size(sourceInfo.getUploadMeta().getSize())
+                                .build()
+                ).getData();
+            } catch (Exception e) {
+                log.error("document resource register failed. dependency=resourceService", e);
+                throw new ServiceException(DocumentError.DOCUMENT_REGISTER_RESOURCE_FAILED, e.getMessage());
+            }
 
+            documentInfoRepository.updateResourceIdById(targetDocumentId, resourceId);
+            // 发送文档就绪事件
             eventPublisher.publishReadyEvent(DocumentReadyMessage.builder()
                     .resourceId(resourceId)
-                    .content(content)
+                    .content(targetContent.getRawText())
                     .build());
-            log.info("documentFork created forkTaskId={} sourceResourceId={} resourceId={} documentId={}",
-                    msg.getForkTaskId(), msg.getSourceResourceId(), resourceId, targetDocumentId);
+            log.info("document fork finished. sourceResourceId={} resourceId={} documentId={}",
+                    msg.getSourceResourceId(), resourceId, targetDocumentId);
+
         } catch (Exception e) {
+            // 异常时回滚
             documentContentRepository.deleteById(targetDocumentId);
             documentPdfMetaRepository.deleteById(targetDocumentId);
             documentInfoRepository.deleteById(targetDocumentId);
             eventPublisher.publishFileDeleteEvent(copiedObjectKeys);
-            log.warn("documentFork compensated forkTaskId={} sourceResourceId={} documentId={}",
-                    msg.getForkTaskId(), msg.getSourceResourceId(), targetDocumentId, e);
+            log.warn("document fork compensated. sourceResourceId={} documentId={}",
+                    msg.getSourceResourceId(), targetDocumentId, e);
             throw new ServiceException(DocumentError.DOCUMENT_FORK_FAILED, e.getMessage());
         }
     }

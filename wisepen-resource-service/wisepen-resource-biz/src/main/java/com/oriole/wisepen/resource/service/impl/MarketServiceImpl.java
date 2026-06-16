@@ -361,15 +361,11 @@ public class MarketServiceImpl implements IMarketService {
         String forkTaskId = IdUtil.fastSimpleUUID();
         ResourceForkMessage forkMessage = ResourceForkMessage.builder()
                 .forkTaskId(forkTaskId)
-                .orderId(order.getOrderId())
                 .sourceResourceId(order.getSourceResourceId())
-                .resourceType(source.getResourceType())
-                .purchaseType(order.getPurchaseType())
-                .version(offer.getOfferVersion())
-                .buyerId(buyerId)
-                .resourceName(source.getResourceName())
-                .preview(source.getPreview())
-                .size(source.getSize())
+                .sourceResourceType(source.getResourceType())
+                .forkedResourceVersion(offer.getOfferVersion())
+                .forkedResourceOwnerId(buyerId)
+                .forkedResourceName(source.getResourceName())
                 .build();
         resourceEventPublisher.publishResourceForkEvent(forkMessage);
         log.info("market fork published. orderId={} forkTaskId={} sourceResourceId={} marketGroupId={} purchaseType={} version={} forkCount={}",

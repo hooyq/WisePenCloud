@@ -19,18 +19,18 @@ public class ResourceForkConsumer {
 
     @KafkaListener(topics = TOPIC_RESOURCE_FORK, groupId = "wisepen-note-fork-group")
     public void onResourceFork(ResourceForkMessage msg) {
-        if (msg.getResourceType() != ResourceType.NOTE) {
+        if (msg.getSourceResourceType() != ResourceType.NOTE) {
             return;
         }
         log.info("resourceFork received topic={} forkTaskId={} sourceResourceId={} resourceType={}",
-                TOPIC_RESOURCE_FORK, msg.getForkTaskId(), msg.getSourceResourceId(), msg.getResourceType());
+                TOPIC_RESOURCE_FORK, msg.getForkTaskId(), msg.getSourceResourceId(), msg.getSourceResourceType());
         try {
             noteService.forkNote(msg);
             log.debug("resourceFork consumed topic={} forkTaskId={} sourceResourceId={} resourceType={}",
-                    TOPIC_RESOURCE_FORK, msg.getForkTaskId(), msg.getSourceResourceId(), msg.getResourceType());
+                    TOPIC_RESOURCE_FORK, msg.getForkTaskId(), msg.getSourceResourceId(), msg.getSourceResourceType());
         } catch (Exception e) {
             log.error("resourceFork consume failed topic={} forkTaskId={} sourceResourceId={} resourceType={}",
-                    TOPIC_RESOURCE_FORK, msg.getForkTaskId(), msg.getSourceResourceId(), msg.getResourceType(), e);
+                    TOPIC_RESOURCE_FORK, msg.getForkTaskId(), msg.getSourceResourceId(), msg.getSourceResourceType(), e);
             throw e;
         }
     }

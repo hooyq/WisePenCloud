@@ -14,7 +14,7 @@ import java.io.Serializable;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class StorageCopyRequest implements Serializable {
+public class CopyReqDTO implements Serializable {
 
     @NotBlank(message = "源文件 ObjectKey 不能为空")
     private String sourceObjectKey;

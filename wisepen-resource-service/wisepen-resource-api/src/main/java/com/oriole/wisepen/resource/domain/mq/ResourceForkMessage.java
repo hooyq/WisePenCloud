@@ -14,21 +14,14 @@ import lombok.NoArgsConstructor;
 public class ResourceForkMessage {
     private String forkTaskId;
 
-    private String orderId;
-
     private String sourceResourceId;
 
-    private ResourceType resourceType;
+    private ResourceType sourceResourceType;
 
-    private MarketPurchaseType purchaseType;
+    private String forkedResourceName;
 
-    private Long version;
+    private Long forkedResourceOwnerId;
 
-    private Long buyerId;
+    private Long forkedResourceVersion;
 
-    private String resourceName;
-
-    private String preview;
-
-    private Long size;
 }

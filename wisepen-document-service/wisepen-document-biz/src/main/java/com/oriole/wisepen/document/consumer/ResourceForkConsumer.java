@@ -19,19 +19,19 @@ public class ResourceForkConsumer {
 
     @KafkaListener(topics = TOPIC_RESOURCE_FORK, groupId = "wisepen-document-fork-group")
     public void onResourceFork(ResourceForkMessage msg) {
-        if (!DocumentConstants.ALLOWED_TYPES.contains(msg.getResourceType())) {
+        if (!DocumentConstants.ALLOWED_TYPES.contains(msg.getSourceResourceType())) {
             return;
         }
 
         log.info("resourceFork received topic={} forkTaskId={} sourceResourceId={} resourceType={}",
-                TOPIC_RESOURCE_FORK, msg.getForkTaskId(), msg.getSourceResourceId(), msg.getResourceType());
+                TOPIC_RESOURCE_FORK, msg.getForkTaskId(), msg.getSourceResourceId(), msg.getSourceResourceType());
         try {
             documentService.forkDocument(msg);
             log.debug("resourceFork consumed topic={} forkTaskId={} sourceResourceId={} resourceType={}",
-                    TOPIC_RESOURCE_FORK, msg.getForkTaskId(), msg.getSourceResourceId(), msg.getResourceType());
+                    TOPIC_RESOURCE_FORK, msg.getForkTaskId(), msg.getSourceResourceId(), msg.getSourceResourceType());
         } catch (Exception e) {
             log.error("resourceFork consume failed topic={} forkTaskId={} sourceResourceId={} resourceType={}",
-                    TOPIC_RESOURCE_FORK, msg.getForkTaskId(), msg.getSourceResourceId(), msg.getResourceType(), e);
+                    TOPIC_RESOURCE_FORK, msg.getForkTaskId(), msg.getSourceResourceId(), msg.getSourceResourceType(), e);
             throw e;
         }
     }
