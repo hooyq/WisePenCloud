@@ -11,7 +11,7 @@ import lombok.Setter;
 @Setter
 @NoArgsConstructor
 @EqualsAndHashCode(callSuper = true)
-public class SkillInfoResponse extends AIResourceInfoBase {
+public class AgentInfoResponse extends AIResourceInfoBase {
     private String resourceId;
-    private SkillVersionBundleInfoResponse skillVersionBundle;
+    private AgentVersionBundleInfoResponse agentVersionBundle;
 }

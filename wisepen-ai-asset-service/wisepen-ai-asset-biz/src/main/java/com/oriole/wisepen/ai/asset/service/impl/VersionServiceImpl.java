@@ -36,8 +36,8 @@ public abstract class VersionServiceImpl<VT extends VersionBundleBaseEntity<VT>,
 
     private static final String ROOT_PATH = "/";
 
-    private final VersionBundleBaseRepository<VT> versionBundleBaseRepository;
-    private final AIResourceBaseRepository<AT> aiResourceBaseRepository;
+    final VersionBundleBaseRepository<VT> versionBundleBaseRepository;
+    final AIResourceBaseRepository<AT> aiResourceBaseRepository;
     private final RemoteStorageService remoteStorageService;
     private final AIAssetEventPublisher eventPublisher;
 
@@ -72,7 +72,7 @@ public abstract class VersionServiceImpl<VT extends VersionBundleBaseEntity<VT>,
     public AssetUploadInitResponse initUploadAssets(AssetUploadInitRequest req) {
         // 检查当前是否是草案版本
         VT draft = versionBundleBaseRepository.findByResourceIdAndVersion(req.getResourceId(), req.getDraftVersion())
-                .orElseThrow(() -> new ServiceException(AIResourceError.AI_RESOURCE_NOT_FOUND));
+                .orElseThrow(() -> new ServiceException(AIResourceError.AI_RESOURCE_VERSION_NOT_FOUND));
         if (draft.getStatus() != VersionStatus.DRAFT) throw new ServiceException(AIResourceError.CANNOT_OPERATE_NON_DRAFT_AI_RESOURCE_VERSION);
 
         Set<String> replacedObjectKeys = new HashSet<>();
@@ -150,6 +150,8 @@ public abstract class VersionServiceImpl<VT extends VersionBundleBaseEntity<VT>,
                     .uploadStatus(AssetUploadStatus.UPLOADING)
                     .build();
             draft.getAssets().add(asset);
+        } else {
+            asset.setSkillAssetResourceType(assetResourceType);
         }
         return asset;
     }

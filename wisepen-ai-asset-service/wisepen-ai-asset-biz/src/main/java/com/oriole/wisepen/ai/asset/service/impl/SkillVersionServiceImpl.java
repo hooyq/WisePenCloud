@@ -17,8 +17,8 @@ import java.util.ArrayList;
 @Service
 public class SkillVersionServiceImpl extends VersionServiceImpl<SkillVersionBundleEntity, SkillEntity> {
 
-    public SkillVersionServiceImpl(VersionBundleBaseRepository<SkillVersionBundleEntity> versionBundleBaseRepository, AIResourceBaseRepository<SkillEntity> aiResourceBaseRepository, RemoteStorageService remoteStorageService, AIAssetEventPublisher eventPublisher) {
-        super(versionBundleBaseRepository, aiResourceBaseRepository, remoteStorageService, eventPublisher);
+    public SkillVersionServiceImpl(VersionBundleBaseRepository<SkillVersionBundleEntity> skillVersionBundleRepository, AIResourceBaseRepository<SkillEntity> SkillRepository, RemoteStorageService remoteStorageService, AIAssetEventPublisher eventPublisher) {
+        super(skillVersionBundleRepository, SkillRepository, remoteStorageService, eventPublisher);
     }
 
     @Override

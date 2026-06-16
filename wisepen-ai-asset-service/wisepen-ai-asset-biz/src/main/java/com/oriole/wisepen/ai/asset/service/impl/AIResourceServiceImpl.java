@@ -7,7 +7,7 @@ import com.oriole.wisepen.ai.asset.domain.dto.req.AIResourceUpdateRequest;
 import com.oriole.wisepen.ai.asset.domain.dto.res.AIResourceMetaInfoResponse;
 import com.oriole.wisepen.ai.asset.domain.entity.AIResourceBaseEntity;
 import com.oriole.wisepen.ai.asset.domain.entity.VersionBundleBaseEntity;
-import com.oriole.wisepen.ai.asset.enums.SkillSourceType;
+import com.oriole.wisepen.ai.asset.enums.AIResourceSourceType;
 import com.oriole.wisepen.ai.asset.exception.AIResourceError;
 import com.oriole.wisepen.ai.asset.repository.AIResourceBaseRepository;
 import com.oriole.wisepen.ai.asset.service.IAIResourceService;
@@ -31,7 +31,7 @@ public abstract class AIResourceServiceImpl<AT extends AIResourceBaseEntity<AT>,
     private final IVersionService<VT> versionService;
     private final RemoteResourceService remoteResourceService;
 
-    protected abstract AT buildNewResource(String resourceId, String name, String description, SkillSourceType skillSourceType);
+    protected abstract AT buildNewResource(String resourceId, String name, String description, AIResourceSourceType skillSourceType);
 
     protected abstract ResourceType getResourceType();
 
@@ -48,7 +48,7 @@ public abstract class AIResourceServiceImpl<AT extends AIResourceBaseEntity<AT>,
 
         String name = req.getName() == null ? "" : req.getName();
         String description = req.getDescription() == null ? "" : req.getDescription();
-        SkillSourceType sourceType = req.getSourceType() == null ? SkillSourceType.MANUAL : req.getSourceType();
+        AIResourceSourceType sourceType = req.getSourceType() == null ? AIResourceSourceType.MANUAL : req.getSourceType();
         AT entity = buildNewResource(resourceId, name, description, sourceType);
         aiResourceBaseRepository.save(entity);
         // 直接新建首份草案(1)
