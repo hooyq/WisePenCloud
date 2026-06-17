@@ -26,10 +26,12 @@ public class ResourceItemEntity extends ResourceItemInfoBase {
     // 预计算后的运行时权限
     private Map<String, ComputedGroupAcl> computedGroupAcls;
 
-    /** 资源级强覆盖：若非空，将无视 computedGroupAcls 的值 */
-    private Integer overrideGrantedActionsMask;
+    /** 资源级强覆盖：若用户组命中此 Map，将无视 computedGroupAcls 的值
+     *  key 为用户组 id， Integer 为 resourceActionsMask */
+    private Map<String, Integer> overrideGrantedActionsMask;
 
-    /** 资源级绝对用户特权：若用户命中此 Map，直接返回该值，无视其他所有规则 */
+    /** 资源级绝对用户特权：若用户命中此 Map，直接返回该值，无视其他所有规则
+     *  key 为用户 id， Integer 为 resourceActionsMask */
     private Map<String, Integer> specifiedUsersGrantedActionsMask;
 
     @CreatedDate
