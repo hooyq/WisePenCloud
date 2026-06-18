@@ -17,7 +17,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-@Tag(name = "管理员 - 集市", description = "管理员查审核资源")
+@Tag(name = "管理员 - 集市", description = "平台管理员审核集市销售信息")
 @RestController
 @RequestMapping("/admin/market")
 @RequiredArgsConstructor
@@ -29,11 +29,11 @@ public class AdminMarketController {
     @Operation(
             summary = "审核资源",
             description = """
-                    - 用途：集市管理员审核资源。
-                    - 请求：resourceId 指定待审核资源；marketGroupId 指定集市群；offerVersion 必须匹配当前上架版本；status 只能为 PUBLISHED、REJECTED 或 BANNED；auditMessage 是审核说明。
-                    - 约束：当前用户必须是平台管理员；驳回或封禁时必须填写审核说明。
-                    - 处理：对该集市群整组 marketOffers 写入审核状态、审核说明、审核时间和审核人；审核通过后移除 override，驳回或封禁保持 override=0。
-                    - 失败：上架记录不存在 -> ResourceError.MARKET_OFFER_NOT_FOUND；驳回或封禁未填写审核说明 -> ResourceError.MARKET_AUDIT_MESSAGE_REQUIRED；审核版本不匹配 -> ResourceError.MARKET_AUDIT_VERSION_MISMATCH；审核目标状态非法 -> ResourceError.MARKET_AUDIT_STATUS_INVALID。
+                    - 用途：平台管理员审核资源在指定集市组中的整组销售信息。
+                    - 请求：resourceId 指定资源；marketGroupId 使用原始集市组ID，定位该资源在目标集市组中的销售信息；offerVersion 必须匹配当前提交版本；status 是审核后写入的目标状态；auditMessage 是审核说明。
+                    - 约束：当前用户必须是平台管理员；集市销售信息必须存在；offerVersion 必须与当前提交版本一致；status 为 REJECTED 或 BANNED 时必须填写 auditMessage。
+                    - 处理：写入 marketSaleInfo 的目标状态、审核说明、审核时间和审核人；状态为 PUBLISHED 时移除该集市组 override，其他状态设置 override=0；仅当状态在 PUBLISHED 与非 PUBLISHED 之间切换时触发 ACL 重算。
+                    - 失败：当前身份不是平台管理员 -> PermissionError.UNAUTHORIZED；资源不存在 -> ResourceError.RESOURCE_NOT_FOUND；集市销售信息不存在 -> ResourceError.MARKET_SALE_INFO_NOT_FOUND；驳回或封禁未填写审核说明 -> ResourceError.MARKET_AUDIT_MESSAGE_INVALID；审核版本与当前提交版本不一致 -> ResourceError.MARKET_AUDIT_VERSION_CONFLICT。
                     - 响应：成功时返回空结果。
                     """
     )
