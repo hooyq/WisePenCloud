@@ -125,11 +125,17 @@ public class NoteServiceImpl implements INoteService {
                     .build();
             noteDocumentRepository.save(targetInfo);
 
+            Long forkedResourceVersion = msg.getForkedResourceVersion() == null
+                    ? noteVersionRepository.findFirstByResourceIdOrderByVersionDesc(msg.getSourceResourceId())
+                    .map(NoteVersionEntity::getVersion)
+                    .orElse(0L)
+                    : msg.getForkedResourceVersion().longValue();
+
             // 复制 笔记内容
             // 查询指定资源在指定版本号（含）之前的最新 FULL 版本记录
             Optional<NoteVersionEntity> latestFull = noteVersionRepository
                     .findFirstByResourceIdAndTypeAndVersionLessThanEqualOrderByVersionDesc(
-                            msg.getSourceResourceId(), VersionType.FULL, msg.getForkedResourceVersion());
+                            msg.getSourceResourceId(), VersionType.FULL, forkedResourceVersion);
 
             Long latestFullVersion = 0L;
             if (latestFull.isPresent()) { // 存在这样的 FULL 版本
@@ -140,7 +146,7 @@ public class NoteServiceImpl implements INoteService {
             // 如果没有最近的 FULL 版本，则到 0
             sourceVersions.addAll(noteVersionRepository
                     .findByResourceIdAndVersionGreaterThanAndVersionLessThanEqualAndTypeOrderByVersionAsc(
-                            msg.getSourceResourceId(), latestFullVersion, msg.getForkedResourceVersion(), VersionType.DELTA));
+                            msg.getSourceResourceId(), latestFullVersion, forkedResourceVersion, VersionType.DELTA));
 
             if (!sourceVersions.isEmpty()) {
                 List<NoteVersionEntity> targetVersions = sourceVersions.stream()
@@ -149,7 +155,7 @@ public class NoteServiceImpl implements INoteService {
             }
 
             log.info("note fork finished. sourceResourceId={} resourceId={} version={}",
-                    msg.getSourceResourceId(), targetResourceId, msg.getForkedResourceVersion());
+                    msg.getSourceResourceId(), targetResourceId, forkedResourceVersion);
         } catch (Exception e) {
             // 异常时回滚
             noteVersionRepository.deleteByResourceIdIn(List.of(targetResourceId));

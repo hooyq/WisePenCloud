@@ -68,18 +68,19 @@ public class NoteController {
             summary = "获取笔记信息",
             description = """
                     - 用途：获取笔记资源详情、笔记元信息和作者展示信息。
-                    - 请求：resourceId 指定笔记资源。
-                    - 约束：当前用户必须已登录，且必须通过资源服务的资源详情权限校验；目标笔记必须存在。
+                    - 请求：resourceId 指定笔记资源；targetVersion 可选，用于 Market 版本限定权限裁决。
+                    - 约束：当前用户必须已登录，且必须通过资源服务的资源详情权限校验；Market 来源查看必须传当前上架 offerVersion；目标笔记必须存在。
                     - 处理：通过资源服务获取资源详情和当前用户动作集合，读取笔记信息，并尽量调用用户服务补充作者展示信息；作者展示信息补充失败时不阻断主响应。
                     - 失败：未登录 -> PermissionError.NOT_LOGIN；资源不存在 -> ResourceError.RESOURCE_NOT_FOUND；资源无查看权限 -> ResourceError.RESOURCE_PERMISSION_DENIED；笔记不存在 -> NoteError.NOTE_NOT_FOUND。
                     - 响应：返回资源信息、笔记信息和可用的作者展示信息。
                     """
     )
     @GetMapping("/getNoteInfo")
-    public R<NoteInfoResponse> getNoteInfo(@RequestParam String resourceId) {
+    public R<NoteInfoResponse> getNoteInfo(@RequestParam String resourceId,
+                                           @RequestParam(value = "targetVersion", required = false) Integer targetVersion) {
         // 若无权限将抛出异常，此处无需重复鉴权
         ResourceItemResponse resourceInfo = remoteResourceService.getResourceInfo(new ResourceInfoGetReqDTO(
-                resourceId, SecurityContextHolder.getUserId(), SecurityContextHolder.getGroupRoleMap()
+                resourceId, SecurityContextHolder.getUserId(), SecurityContextHolder.getGroupRoleMap(), targetVersion
         )).getData();
         NoteInfoBase noteInfo = noteService.getNoteInfo(resourceId);
 

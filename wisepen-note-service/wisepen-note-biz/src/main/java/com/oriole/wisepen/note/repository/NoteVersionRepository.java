@@ -20,6 +20,9 @@ public interface NoteVersionRepository extends MongoRepository<NoteVersionEntity
     Optional<NoteVersionEntity> findFirstByResourceIdAndTypeOrderByVersionDesc(
             String resourceId, VersionType type);
 
+    /** 查找指定资源最近的版本 */
+    Optional<NoteVersionEntity> findFirstByResourceIdOrderByVersionDesc(String resourceId);
+
     /** 查询指定资源在指定版本号（含）之前的最新特定类型版本记录 */
     Optional<NoteVersionEntity> findFirstByResourceIdAndTypeAndVersionLessThanEqualOrderByVersionDesc(
             String resourceId, VersionType type, Long version);

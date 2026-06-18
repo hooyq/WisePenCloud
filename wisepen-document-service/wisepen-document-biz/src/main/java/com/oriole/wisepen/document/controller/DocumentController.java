@@ -138,8 +138,8 @@ public class DocumentController {
             summary = "获取文档预览",
             description = """
                     - 用途：为有查看权限的用户输出文档 PDF 预览流。
-                    - 请求：resourceId 指定文档资源；Range 请求头可用于分段读取。
-                    - 约束：当前用户必须已登录，且必须是资源所有者或拥有 VIEW 动作；文档必须已经处理完成并具备预览文件。
+                    - 请求：resourceId 指定文档资源；targetVersion 可选，用于 Market 版本限定权限裁决；Range 请求头可用于分段读取。
+                    - 约束：当前用户必须已登录，且必须是资源所有者或拥有 VIEW 动作；Market 来源预览必须传当前上架 offerVersion；文档必须已经处理完成并具备预览文件。
                     - 处理：先通过资源服务校验权限，再读取文档预览元数据和对象存储下载地址；支持全量或 Range 响应，并在预览流尾部追加水印附录；不修改文档内容或资源权限。
                     - 失败：未登录 -> PermissionError.NOT_LOGIN；资源无查看权限 -> DocumentError.DOCUMENT_PERMISSION_DENIED；文档不存在 -> DocumentError.DOCUMENT_NOT_FOUND；预览未就绪 -> DocumentError.DOCUMENT_PREVIEW_NOT_READY；预览元数据缺失或响应流写入失败 -> DocumentError.DOCUMENT_PREVIEW_FAILED。
                     - 响应：直接写出 application/pdf 预览流。
@@ -147,11 +147,12 @@ public class DocumentController {
     )
     @GetMapping("/getDocPreview")
     public void previewDocument(@RequestParam String resourceId,
+                                @RequestParam(value = "targetVersion", required = false) Integer targetVersion,
                                 HttpServletRequest request,
                                 HttpServletResponse response) {
         String userId = String.valueOf(SecurityContextHolder.getUserId());
         ResourceCheckPermissionResDTO permission = remoteResourceService.checkResPermission(new ResourceCheckPermissionReqDTO(
-                resourceId, SecurityContextHolder.getUserId(), SecurityContextHolder.getGroupRoleMap()
+                resourceId, SecurityContextHolder.getUserId(), SecurityContextHolder.getGroupRoleMap(), targetVersion
         )).getData();
         if (permission.getResourceAccessRole() == ResourceAccessRole.OWNER || permission.getAllowedActions().contains(ResourceAction.VIEW)) {
             documentPreviewService.handlePreviewRequest(request, response, resourceId, userId);
@@ -164,18 +165,19 @@ public class DocumentController {
             summary = "获取文档信息",
             description = """
                     - 用途：获取文档资源详情和文档处理信息，用于文档详情页展示。
-                    - 请求：resourceId 指定文档资源。
-                    - 约束：当前用户必须已登录，且必须通过资源服务的资源详情权限校验；目标文档信息必须存在。
+                    - 请求：resourceId 指定文档资源；targetVersion 可选，用于 Market 版本限定权限裁决。
+                    - 约束：当前用户必须已登录，且必须通过资源服务的资源详情权限校验；Market 来源查看必须传当前上架 offerVersion；目标文档信息必须存在。
                     - 处理：通过资源服务获取资源详情和当前用户可执行动作，再读取文档信息并组合响应；不刷新文档状态，不触发解析或重试。
                     - 失败：未登录 -> PermissionError.NOT_LOGIN；资源不存在 -> ResourceError.RESOURCE_NOT_FOUND；资源无查看权限 -> ResourceError.RESOURCE_PERMISSION_DENIED；文档不存在 -> DocumentError.DOCUMENT_NOT_FOUND。
                     - 响应：返回资源信息与文档信息组合结果。
                     """
     )
     @GetMapping("/getDocInfo")
-    public R<DocumentInfoResponse> getDocumentInfo(@RequestParam String resourceId) {
+    public R<DocumentInfoResponse> getDocumentInfo(@RequestParam String resourceId,
+                                                   @RequestParam(value = "targetVersion", required = false) Integer targetVersion) {
         // 若无权限将抛出异常，此处无需重复鉴权
         ResourceItemResponse resourceInfo = remoteResourceService.getResourceInfo(new ResourceInfoGetReqDTO(
-                resourceId, SecurityContextHolder.getUserId(), SecurityContextHolder.getGroupRoleMap()
+                resourceId, SecurityContextHolder.getUserId(), SecurityContextHolder.getGroupRoleMap(), targetVersion
         )).getData();
         DocumentInfoBase documentInfo = documentService.getDocumentInfo(resourceId);
         DocumentInfoResponse documentInfoResponse = DocumentInfoResponse.builder().resourceInfo(resourceInfo).documentInfo(documentInfo).build();

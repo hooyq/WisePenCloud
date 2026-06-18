@@ -85,18 +85,19 @@ public class AgentController {
             summary = "获取智能体资产信息",
             description = """
                     - 用途：获取智能体资源详情和智能体资产主档信息。
-                    - 请求：resourceId 指定智能体资产资源。
-                    - 约束：当前用户必须已登录，且必须通过资源服务的资源详情权限校验；目标智能体资产必须存在。
+                    - 请求：resourceId 指定智能体资产资源；targetVersion 可选，用于 Market 版本限定权限裁决。
+                    - 约束：当前用户必须已登录，且必须通过资源服务的资源详情权限校验；Market 来源查看必须传当前上架 offerVersion；目标智能体资产必须存在。
                     - 处理：通过资源服务获取资源详情和当前用户动作集合，再读取智能体主档信息并组合响应；不读取版本快照。
                     - 失败：未登录 -> PermissionError.NOT_LOGIN；资源不存在 -> ResourceError.RESOURCE_NOT_FOUND；资源无查看权限 -> ResourceError.RESOURCE_PERMISSION_DENIED；智能体不存在 -> AIResourceError.AI_RESOURCE_NOT_FOUND。
                     - 响应：返回资源信息与智能体资产信息。
                     """
     )
     @PostMapping("/getAgentInfo")
-    public R<AgentResourceInfoResponse> getAgentInfo(@RequestParam String resourceId) {
+    public R<AgentResourceInfoResponse> getAgentInfo(@RequestParam String resourceId,
+                                                     @RequestParam(value = "targetVersion", required = false) Integer targetVersion) {
         // 若无权限将抛出异常，此处无需重复鉴权
         ResourceItemResponse resourceInfo = remoteResourceService.getResourceInfo(new ResourceInfoGetReqDTO(
-                resourceId, SecurityContextHolder.getUserId(), SecurityContextHolder.getGroupRoleMap()
+                resourceId, SecurityContextHolder.getUserId(), SecurityContextHolder.getGroupRoleMap(), targetVersion
         )).getData();
         AIResourceInfoBase agentInfo = agentService.getAIResourceInfo(resourceId);
         AgentResourceInfoResponse agentResourceInfoResponse = AgentResourceInfoResponse.builder().resourceInfo(resourceInfo).agentInfo(agentInfo).build();
