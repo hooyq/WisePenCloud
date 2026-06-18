@@ -1,6 +1,6 @@
 package com.oriole.wisepen.resource.domain;
 
-import com.oriole.wisepen.resource.domain.base.MarketOfferOptionBase;
+import com.oriole.wisepen.resource.domain.base.MarketSaleInfoBase;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -15,7 +15,7 @@ import java.util.Map;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class MarketOfferOption extends MarketOfferOptionBase {
+public class MarketSaleInfo extends MarketSaleInfoBase {
     // 已售资源权限
     private Map<String, Integer> marketSpecifiedUsersGrantedActionsMask; // Market自行管理
 

@@ -6,7 +6,7 @@ import lombok.Data;
 import java.util.List;
 
 @Data
-public class MarketOfferInfoResponse {
+public class MarketSaleTierResponse {
     private String offerId;
     private List<ResourceAction> grantedActions; // 购买资源的用户可以获得的权限掩码
     private Integer price; // 售卖价格

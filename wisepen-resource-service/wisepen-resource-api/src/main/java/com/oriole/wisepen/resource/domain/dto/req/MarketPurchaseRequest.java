@@ -6,7 +6,7 @@ import lombok.Data;
 
 @Data
 public class MarketPurchaseRequest {
-    @NotBlank(message = ResourceValidationMsg.MARKET_OFFER_ID_NOT_BLANK)
+    @NotBlank(message = ResourceValidationMsg.MARKET_SALE_TIER_ID_NOT_BLANK)
     private String offerId;
 
     @NotBlank(message = ResourceValidationMsg.RESOURCE_ID_NOT_BLANK)

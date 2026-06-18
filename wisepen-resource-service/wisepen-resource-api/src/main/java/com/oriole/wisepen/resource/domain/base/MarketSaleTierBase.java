@@ -11,7 +11,7 @@ import java.time.LocalDateTime;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class MarketOfferInfoBase {
+public class MarketSaleTierBase {
     @Builder.Default
     private String offerId = IdUtil.fastSimpleUUID();
     // 售卖详情

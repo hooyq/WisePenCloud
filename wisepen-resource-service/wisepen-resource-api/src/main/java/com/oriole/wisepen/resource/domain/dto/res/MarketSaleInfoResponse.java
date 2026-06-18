@@ -1,6 +1,6 @@
 package com.oriole.wisepen.resource.domain.dto.res;
 
-import com.oriole.wisepen.resource.enums.MarketOfferStatus;
+import com.oriole.wisepen.resource.enums.MarketSaleStatus;
 import com.oriole.wisepen.resource.enums.ResourceAction;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -12,17 +12,17 @@ import java.util.List;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class MarketOfferOptionResponse {
+public class MarketSaleInfoResponse {
     // 预览配置
     private List<ResourceAction> reviewActions; // 未购买资源的用户可以获得的权限
     // 预览配置
     private int reviewContentPercentage; // 可预览内容百分比
 
     // 售卖信息
-    private List<MarketOfferInfoResponse> marketOfferList;
+    private List<MarketSaleTierResponse> marketSaleTiers;
 
     // 售卖状态
-    private MarketOfferStatus status; // 状态
+    private MarketSaleStatus status; // 状态
     private Integer offerVersion; // 指定售卖版本
 
 

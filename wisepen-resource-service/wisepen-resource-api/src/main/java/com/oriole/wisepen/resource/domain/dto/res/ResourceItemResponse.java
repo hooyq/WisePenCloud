@@ -23,5 +23,5 @@ public class ResourceItemResponse extends ResourceItemInfoBase {
     private Map<String, List<ResourceAction>> overrideGrantedActions;
     private Map<String, List<ResourceAction>> specifiedUsersGrantedActions;
 
-    private Map<String, MarketOfferOptionResponse> marketOfferOptions = new HashMap<>();
+    private Map<String, MarketSaleInfoResponse> marketSaleInfos = new HashMap<>();
 }

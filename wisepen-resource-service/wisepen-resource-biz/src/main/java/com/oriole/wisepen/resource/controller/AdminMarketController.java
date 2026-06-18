@@ -6,7 +6,7 @@ import com.oriole.wisepen.common.core.domain.enums.BusinessType;
 import com.oriole.wisepen.common.core.domain.enums.IdentityType;
 import com.oriole.wisepen.common.log.annotation.Log;
 import com.oriole.wisepen.common.security.annotation.CheckRole;
-import com.oriole.wisepen.resource.domain.dto.req.MarketAuditOfferRequest;
+import com.oriole.wisepen.resource.domain.dto.req.MarketSaleAuditRequest;
 import com.oriole.wisepen.resource.service.IMarketService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -38,9 +38,9 @@ public class AdminMarketController {
                     """
     )
     @Log(title = "审核资源", businessType = BusinessType.UPDATE)
-    @PostMapping("/auditOffer")
-    public R<Void> auditOffer(@Valid @RequestBody MarketAuditOfferRequest request) {
-        marketService.auditOffer(request, SecurityContextHolder.getUserId().toString());
+    @PostMapping("/auditSale")
+    public R<Void> auditSale(@Valid @RequestBody MarketSaleAuditRequest request) {
+        marketService.auditSaleInfo(request, SecurityContextHolder.getUserId().toString());
         return R.ok();
     }
 }

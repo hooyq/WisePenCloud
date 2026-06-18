@@ -3,7 +3,7 @@ package com.oriole.wisepen.resource.domain.entity;
 import com.oriole.wisepen.resource.domain.ComputedGroupAcl;
 import com.oriole.wisepen.resource.domain.GroupTagBind;
 import com.oriole.wisepen.resource.domain.base.ResourceItemInfoBase;
-import com.oriole.wisepen.resource.enums.MarketOfferStatus;
+import com.oriole.wisepen.resource.enums.MarketSaleStatus;
 import lombok.*;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.Id;
@@ -44,15 +44,15 @@ public class ResourceItemEntity extends ResourceItemInfoBase {
     /** 资源删除时间，非 null 表示已删除；定时任务据此判断是否到期硬删*/
     private LocalDateTime deletedAt;
 
-    public void offShelfMarketOffer(String groupID) {
+    public void offShelfMarketSaleInfo(String groupID) {
         // 如果绑定了 Market 组
         groupBinds.stream().filter(groupTagBind->groupTagBind.getGroupId().equals(groupID)).findFirst().ifPresent(groupTagBind -> {
             // 设置该 Market 组权限掩码为 0
             if (overrideGrantedActionsMask == null) overrideGrantedActionsMask = new HashMap<>();
             overrideGrantedActionsMask.put(groupID, 0);
-            // 该 Market 组 Offer 状态不是 BANNED 时，转为 OFF_SHELF
-            if (groupTagBind.getMarketOffer() != null && groupTagBind.getMarketOffer().getStatus() != MarketOfferStatus.BANNED) {
-                groupTagBind.getMarketOffer().setStatus(MarketOfferStatus.OFF_SHELF);
+            // 该 Market 组 MarketSaleInfo 状态不是 BANNED 时，转为 OFF_SHELF
+            if (groupTagBind.getMarketSaleInfo() != null && groupTagBind.getMarketSaleInfo().getStatus() != MarketSaleStatus.BANNED) {
+                groupTagBind.getMarketSaleInfo().setStatus(MarketSaleStatus.OFF_SHELF);
             }
         });
     }

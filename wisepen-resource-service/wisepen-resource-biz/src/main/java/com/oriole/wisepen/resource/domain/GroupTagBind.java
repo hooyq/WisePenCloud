@@ -21,7 +21,7 @@ public class GroupTagBind {
     private List<String> tagIds;
 
     // 仅集市组使用
-    private MarketOfferOption marketOffer;
+    private MarketSaleInfo marketSaleInfo;
 
     @Builder
     public GroupTagBind(List<String> tagIds, String groupId) {

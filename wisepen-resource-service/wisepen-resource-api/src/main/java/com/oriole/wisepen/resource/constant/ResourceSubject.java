@@ -11,6 +11,7 @@ public enum ResourceSubject implements IBusinessSubject {
     RESOURCE,
     RESOURCE_TAG,
     FILE_ORG_LOGIC,
+    MARKET,
     FAVORITE,
     COMMENT;
 

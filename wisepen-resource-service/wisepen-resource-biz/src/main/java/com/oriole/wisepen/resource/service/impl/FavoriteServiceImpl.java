@@ -254,7 +254,7 @@ public class FavoriteServiceImpl implements IFavoriteService {
 
         // 组装 ResourceItemResponse（过滤无 ResourceAction.DISCOVER 权限的）
         Map<String, ResourceItemResponse> responseMap = resourceItemResponseAssembler
-                .assembleMany(resourceMap.values().stream().toList(), userId, groupRoles, List.of(ResourceAction.DISCOVER))
+                .assembleMany(resourceMap.values().stream().toList(), userId, groupRoles, List.of(ResourceAction.DISCOVER), null, false)
                 .stream().collect(Collectors.toMap(ResourceItemResponse::getResourceId, response -> response));
 
         List<FavoriteItemResponse> responses = refPage.getContent().stream()

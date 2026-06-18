@@ -6,16 +6,16 @@ import com.oriole.wisepen.common.core.domain.PageR;
 import com.oriole.wisepen.common.core.domain.enums.GroupType;
 import com.oriole.wisepen.common.core.exception.ServiceException;
 import com.oriole.wisepen.resource.domain.GroupTagBind;
-import com.oriole.wisepen.resource.domain.MarketOfferOption;
-import com.oriole.wisepen.resource.domain.base.MarketOfferInfoBase;
-import com.oriole.wisepen.resource.domain.dto.req.MarketAuditOfferRequest;
-import com.oriole.wisepen.resource.domain.dto.req.MarketOffShelfOfferRequest;
-import com.oriole.wisepen.resource.domain.dto.req.MarketPublishOfferRequest;
+import com.oriole.wisepen.resource.domain.MarketSaleInfo;
+import com.oriole.wisepen.resource.domain.base.MarketSaleTierBase;
+import com.oriole.wisepen.resource.domain.dto.req.MarketSaleAuditRequest;
+import com.oriole.wisepen.resource.domain.dto.req.MarketSaleOffShelfRequest;
+import com.oriole.wisepen.resource.domain.dto.req.MarketSalePublishRequest;
 import com.oriole.wisepen.resource.domain.dto.req.MarketPurchaseRequest;
 import com.oriole.wisepen.resource.domain.dto.res.MarketOrderResponse;
 import com.oriole.wisepen.resource.domain.entity.MarketOrderEntity;
 import com.oriole.wisepen.resource.domain.entity.ResourceItemEntity;
-import com.oriole.wisepen.resource.enums.MarketOfferStatus;
+import com.oriole.wisepen.resource.enums.MarketSaleStatus;
 import com.oriole.wisepen.resource.enums.ResourceAction;
 import com.oriole.wisepen.resource.exception.ResourceError;
 import com.oriole.wisepen.resource.mq.IResourceEventPublisher;
@@ -56,7 +56,7 @@ public class MarketServiceImpl implements IMarketService {
 
     @Override
     // 上架
-    public void publishOffer(MarketPublishOfferRequest request) {
+    public void publishSaleInfo(MarketSalePublishRequest request) {
         ResourceItemEntity resource = resourceItemRepository.findById(request.getResourceId())
                 .orElseThrow(() -> new ServiceException(ResourceError.RESOURCE_NOT_FOUND));
 
@@ -65,7 +65,7 @@ public class MarketServiceImpl implements IMarketService {
         Map<Long, GroupDisplayBase> groupMap = remoteUserService.getGroupDisplayInfo(List.of(Long.valueOf(marketGroupId))).getData();
         GroupDisplayBase groupInfo = groupMap == null ? null : groupMap.get(Long.valueOf(marketGroupId));
         if (groupInfo == null || groupInfo.getGroupType() != GroupType.MARKET_GROUP) {
-            throw new ServiceException(ResourceError.MARKET_GROUP_REQUIRED);
+            throw new ServiceException(ResourceError.MARKET_GROUP_NOT_FOUND);
         }
 
         // MARKET 组的 Tag 在 MARKET_GROUP_PREFIX 前缀的 groupId 下
@@ -80,169 +80,169 @@ public class MarketServiceImpl implements IMarketService {
         }
         groupBind.setTagIds(request.getTagIds());
 
-        MarketOfferOption marketOfferOption = groupBind.getMarketOffer() == null ? new MarketOfferOption() : groupBind.getMarketOffer();
+        MarketSaleInfo marketSaleInfo = groupBind.getMarketSaleInfo() == null ? new MarketSaleInfo() : groupBind.getMarketSaleInfo();
 
-        if (marketOfferOption.getStatus() == MarketOfferStatus.BANNED) { // 被禁的资源不能上架
-            throw new ServiceException(ResourceError.MARKET_OFFER_BANNED);
+        if (marketSaleInfo.getStatus() == MarketSaleStatus.BANNED) { // 被禁的资源不能上架
+            throw new ServiceException(ResourceError.CANNOT_REPUBLISH_BANNED_MARKET_SALE);
         }
 
-        marketOfferOption.setReviewContentPercentage(request.getReviewContentPercentage());
+        marketSaleInfo.setReviewContentPercentage(request.getReviewContentPercentage());
         // 拒绝带有 EDIT 权限的 ReviewAction
         if (request.getReviewActions() != null && request.getReviewActions().contains(ResourceAction.EDIT)) {
-            throw new ServiceException(ResourceError.MARKET_FORBIDDEN_ACTION_INCLUDED);
+            throw new ServiceException(ResourceError.MARKET_ACTIONS_INVALID);
         }
-        marketOfferOption.setReviewActionsMask(request.getReviewActions() == null ? null : ResourceAction.actionsToPermissionCode(request.getReviewActions()));
+        marketSaleInfo.setReviewActionsMask(request.getReviewActions() == null ? null : ResourceAction.actionsToPermissionCode(request.getReviewActions()));
 
         Set<Integer> grantedActionMasks = new HashSet<>();
-        List<MarketOfferInfoBase> offerList = new ArrayList<>();
-        for (MarketPublishOfferRequest.MarketOfferInfo marketOfferInfo : request.getMarketOfferList()) {
+        List<MarketSaleTierBase> marketSaleTiers = new ArrayList<>();
+        for (MarketSalePublishRequest.MarketSaleTier marketSaleTier : request.getMarketSaleTiers()) {
             // 拒绝带有 EDIT 权限的 Action
-            if (marketOfferInfo.getGrantedActions().contains(ResourceAction.EDIT)) {
-                throw new ServiceException(ResourceError.MARKET_FORBIDDEN_ACTION_INCLUDED);
+            if (marketSaleTier.getGrantedActions().contains(ResourceAction.EDIT)) {
+                throw new ServiceException(ResourceError.MARKET_ACTIONS_INVALID);
             }
-            int grantedActionsMask = ResourceAction.actionsToPermissionCode(marketOfferInfo.getGrantedActions());
+            int grantedActionsMask = ResourceAction.actionsToPermissionCode(marketSaleTier.getGrantedActions());
             if (!grantedActionMasks.add(grantedActionsMask)) {
                 // 禁止相同权限码分售不同价格
-                throw new ServiceException(ResourceError.MARKET_OFFER_ACTIONS_DUPLICATED);
+                throw new ServiceException(ResourceError.MARKET_SALE_TIER_ACTIONS_DUPLICATED);
             }
-            offerList.add(MarketOfferInfoBase.builder().price(marketOfferInfo.getPrice()).grantedActionsMask(grantedActionsMask).createAt(LocalDateTime.now()).build());
+            marketSaleTiers.add(MarketSaleTierBase.builder().price(marketSaleTier.getPrice()).grantedActionsMask(grantedActionsMask).createAt(LocalDateTime.now()).build());
         }
-        marketOfferOption.setMarketOfferList(offerList);
+        marketSaleInfo.setMarketSaleTiers(marketSaleTiers);
 
-        if ((marketOfferOption.getStatus() == MarketOfferStatus.PUBLISHED || marketOfferOption.getStatus() == MarketOfferStatus.OFF_SHELF)
-                && Objects.equals(marketOfferOption.getOfferVersion(), request.getOfferVersion())) {
-            marketOfferOption.setStatus(MarketOfferStatus.PUBLISHED); // 如果此前是已发布或下架状态，且没有改变上架的版本，则直接上架
+        if ((marketSaleInfo.getStatus() == MarketSaleStatus.PUBLISHED || marketSaleInfo.getStatus() == MarketSaleStatus.OFF_SHELF)
+                && Objects.equals(marketSaleInfo.getOfferVersion(), request.getOfferVersion())) {
+            marketSaleInfo.setStatus(MarketSaleStatus.PUBLISHED); // 如果此前是已发布或下架状态，且没有改变上架的版本，则直接上架
             // 解除限制
             if (resource.getOverrideGrantedActionsMask() != null) resource.getOverrideGrantedActionsMask().remove(marketGroupId);
         } else {
             // 否则需要审核
-            marketOfferOption.setOfferVersion(request.getOfferVersion());
-            marketOfferOption.setStatus(MarketOfferStatus.PENDING);
+            marketSaleInfo.setOfferVersion(request.getOfferVersion());
+            marketSaleInfo.setStatus(MarketSaleStatus.PENDING_REVIEW);
             // 清空上次审核信息
-            marketOfferOption.setAuditorId(null);
-            marketOfferOption.setAuditMessage(null);
-            marketOfferOption.setAuditAt(null);
+            marketSaleInfo.setAuditorId(null);
+            marketSaleInfo.setAuditMessage(null);
+            marketSaleInfo.setAuditAt(null);
             // 在审核前，该资源不能从 MARKET 组获得任何权限
             if (resource.getOverrideGrantedActionsMask() == null) resource.setOverrideGrantedActionsMask(new HashMap<>());
             resource.getOverrideGrantedActionsMask().put(marketGroupId, 0);
         }
-        groupBind.setMarketOffer(marketOfferOption);
+        groupBind.setMarketSaleInfo(marketSaleInfo);
         resource.setGroupBinds(groupBinds);
         resourceItemRepository.save(resource);
 
-        if (marketOfferOption.getStatus() == MarketOfferStatus.PUBLISHED) { // 如果为发布状态，则触发 ACL 重算，否则不触发
-            resourceEventPublisher.publishAclRecalculateEvent(resource.getResourceId(), "MARKET_OFFER_PUBLISHED");
+        if (marketSaleInfo.getStatus() == MarketSaleStatus.PUBLISHED) { // 如果为发布状态，则触发 ACL 重算，否则不触发
+            resourceEventPublisher.publishAclRecalculateEvent(resource.getResourceId(), "MARKET_SALE_INFO_PUBLISHED");
         }
 
-        log.info("market offer submitted. resourceId={} marketGroupId={} offerVersion={}",
+        log.info("market sale info submitted. resourceId={} marketGroupId={} offerVersion={}",
                 resource.getResourceId(), marketGroupId, request.getOfferVersion());
     }
 
     @Override
-    public void offShelfOffer(MarketOffShelfOfferRequest request) {
+    public void offShelfSaleInfo(MarketSaleOffShelfRequest request) {
         ResourceItemEntity resource = resourceItemRepository.findById(request.getResourceId())
                 .orElseThrow(() -> new ServiceException(ResourceError.RESOURCE_NOT_FOUND));
         String marketGroupId = request.getMarketGroupId();
 
-        MarketOfferOption marketOfferOption = getMarketOfferOption(resource, marketGroupId);
+        MarketSaleInfo marketSaleInfo = getmarketSaleInfo(resource, marketGroupId);
 
-        if (marketOfferOption.getStatus() == MarketOfferStatus.BANNED) { // 被禁的资源不能下架
-            throw new ServiceException(ResourceError.MARKET_OFFER_BANNED);
-        } else if(marketOfferOption.getStatus() != MarketOfferStatus.PUBLISHED) { // 未上架的资源不能下架
-            throw new ServiceException(ResourceError.MARKET_OFFER_NOT_ACTIVE);
+        if (marketSaleInfo.getStatus() == MarketSaleStatus.BANNED) { // 被禁的资源不能下架
+            throw new ServiceException(ResourceError.CANNOT_REPUBLISH_BANNED_MARKET_SALE);
+        } else if(marketSaleInfo.getStatus() != MarketSaleStatus.PUBLISHED) { // 未上架的资源不能下架
+            throw new ServiceException(ResourceError.CANNOT_OPERATE_OFF_SHELF_MARKET_SALE);
         }
 
-        marketOfferOption.setStatus(MarketOfferStatus.OFF_SHELF);
+        marketSaleInfo.setStatus(MarketSaleStatus.OFF_SHELF);
         if (resource.getOverrideGrantedActionsMask() == null) resource.setOverrideGrantedActionsMask(new HashMap<>());
         resource.getOverrideGrantedActionsMask().put(marketGroupId, 0); // 在上架前，该资源不能从 MARKET 组获得任何权限
 
         resourceItemRepository.save(resource);
-        resourceEventPublisher.publishAclRecalculateEvent(resource.getResourceId(), "MARKET_OFFER_OFF_SHELF");
-        log.info("market offer off-shelved. resourceId={} marketGroupId={}", resource.getResourceId(), marketGroupId);
+        resourceEventPublisher.publishAclRecalculateEvent(resource.getResourceId(), "MARKET_SALE_INFO_OFF_SHELF");
+        log.info("market sale info off-shelved. resourceId={} marketGroupId={}", resource.getResourceId(), marketGroupId);
     }
 
     @Override
-    public void auditOffer(MarketAuditOfferRequest request, String operatorId) {
+    public void auditSaleInfo(MarketSaleAuditRequest request, String operatorId) {
         // 当拒绝或封禁资源时，必须提供理由
-        if ((request.getStatus() == MarketOfferStatus.REJECTED || request.getStatus() == MarketOfferStatus.BANNED)
+        if ((request.getStatus() == MarketSaleStatus.REJECTED || request.getStatus() == MarketSaleStatus.BANNED)
                 && !StringUtils.hasText(request.getAuditMessage())) {
-            throw new ServiceException(ResourceError.MARKET_AUDIT_MESSAGE_REQUIRED);
+            throw new ServiceException(ResourceError.MARKET_AUDIT_MESSAGE_INVALID);
         }
 
         ResourceItemEntity resource = resourceItemRepository.findById(request.getResourceId())
                 .orElseThrow(() -> new ServiceException(ResourceError.RESOURCE_NOT_FOUND));
         String marketGroupId = request.getMarketGroupId();
 
-        MarketOfferOption marketOfferOption = getMarketOfferOption(resource, marketGroupId);
+        MarketSaleInfo marketSaleInfo = getmarketSaleInfo(resource, marketGroupId);
 
-        MarketOfferStatus oldMarketOfferStatus = marketOfferOption.getStatus(); // 旧状态
+        MarketSaleStatus oldMarketSaleStatus = marketSaleInfo.getStatus(); // 旧状态
 
         // 审计的版本号必须与当前版本号对应（防止在审查时用户更新导致漏检）
-        if (!Objects.equals(marketOfferOption.getOfferVersion(), request.getOfferVersion())) {
-            throw new ServiceException(ResourceError.MARKET_AUDIT_VERSION_MISMATCH);
+        if (!Objects.equals(marketSaleInfo.getOfferVersion(), request.getOfferVersion())) {
+            throw new ServiceException(ResourceError.MARKET_AUDIT_VERSION_CONFLICT);
         }
 
-        marketOfferOption.setStatus(request.getStatus());
-        marketOfferOption.setAuditMessage(request.getAuditMessage());
-        marketOfferOption.setAuditAt(LocalDateTime.now());
-        marketOfferOption.setAuditorId(operatorId);
+        marketSaleInfo.setStatus(request.getStatus());
+        marketSaleInfo.setAuditMessage(request.getAuditMessage());
+        marketSaleInfo.setAuditAt(LocalDateTime.now());
+        marketSaleInfo.setAuditorId(operatorId);
 
         if (resource.getOverrideGrantedActionsMask() == null) resource.setOverrideGrantedActionsMask(new HashMap<>());
-        if (request.getStatus() == MarketOfferStatus.PUBLISHED) {
+        if (request.getStatus() == MarketSaleStatus.PUBLISHED) {
             resource.getOverrideGrantedActionsMask().remove(marketGroupId); // 上架，该资源可从 MARKET 组获得权限
         } else {
             resource.getOverrideGrantedActionsMask().put(marketGroupId, 0); // 在上架前，该资源不能从 MARKET 组获得任何权限
         }
         resourceItemRepository.save(resource);
 
-        if (marketOfferOption.getStatus() == MarketOfferStatus.PUBLISHED && oldMarketOfferStatus != marketOfferOption.getStatus()) {
+        if (marketSaleInfo.getStatus() == MarketSaleStatus.PUBLISHED && oldMarketSaleStatus != marketSaleInfo.getStatus()) {
             // 如果改变后为发布状态（说明是新上架），则触发 ACL 重算
-            resourceEventPublisher.publishAclRecalculateEvent(resource.getResourceId(), "MARKET_OFFER_PUBLISHED");
-        } else if(oldMarketOfferStatus == MarketOfferStatus.PUBLISHED && oldMarketOfferStatus != marketOfferOption.getStatus()) {
+            resourceEventPublisher.publishAclRecalculateEvent(resource.getResourceId(), "MARKET_SALE_INFO_PUBLISHED");
+        } else if(oldMarketSaleStatus == MarketSaleStatus.PUBLISHED && oldMarketSaleStatus != marketSaleInfo.getStatus()) {
             // 如果改变前为发布状态（说明是新下架），则触发 ACL 重算
-            resourceEventPublisher.publishAclRecalculateEvent(resource.getResourceId(), "MARKET_OFFER_OFF_SHELF");
+            resourceEventPublisher.publishAclRecalculateEvent(resource.getResourceId(), "MARKET_SALE_INFO_OFF_SHELF");
         }
 
-        log.info("market offer audited. resourceId={} operatorId={} marketGroupId={} status={} offerVersion={}",
-                resource.getResourceId(), operatorId, marketGroupId, request.getStatus(), marketOfferOption.getOfferVersion());
+        log.info("market sale info audited. resourceId={} operatorId={} marketGroupId={} status={} offerVersion={}",
+                resource.getResourceId(), operatorId, marketGroupId, request.getStatus(), marketSaleInfo.getOfferVersion());
     }
 
     @Override
-    public MarketOrderResponse purchase(MarketPurchaseRequest request, String buyerId) {
+    public MarketOrderResponse purchaseResource(MarketPurchaseRequest request, String buyerId) {
         ResourceItemEntity resource = resourceItemRepository.findById(request.getResourceId())
                 .orElseThrow(() -> new ServiceException(ResourceError.RESOURCE_NOT_FOUND));
         String marketGroupId = request.getMarketGroupId();
 
-        MarketOfferOption marketOfferOption = getMarketOfferOption(resource, marketGroupId);
+        MarketSaleInfo marketSaleInfo = getmarketSaleInfo(resource, marketGroupId);
 
         // 购买的资源必须是上架状态
-        if (marketOfferOption.getStatus() != MarketOfferStatus.PUBLISHED) {
-            throw new ServiceException(ResourceError.MARKET_OFFER_NOT_ACTIVE);
+        if (marketSaleInfo.getStatus() != MarketSaleStatus.PUBLISHED) {
+            throw new ServiceException(ResourceError.CANNOT_PURCHASE_OFF_SHELF_MARKET_SALE);
         }
 
         // 不能自己购买自己的资源
         if (buyerId.equals(resource.getOwnerId())) {
-            throw new ServiceException(ResourceError.MARKET_SELF_ORDER_NOT_ALLOWED);
+            throw new ServiceException(ResourceError.CANNOT_PURCHASE_OWN_MARKET_SALE);
         }
 
         // 检查购买的 OfferID 是否存在
-        MarketOfferInfoBase offer = marketOfferOption.getMarketOfferList().stream()
+        MarketSaleTierBase marketSaleTier = marketSaleInfo.getMarketSaleTiers().stream()
                 .filter(item -> request.getOfferId().equals(item.getOfferId()))
                 .findFirst()
-                .orElseThrow(() -> new ServiceException(ResourceError.MARKET_OFFER_ID_INVALID));
+                .orElseThrow(() -> new ServiceException(ResourceError.MARKET_SALE_TIER_NOT_FOUND));
 
         // 不能重复购买，检查要购买的权限该用户是否本身就完全拥有
-        Map<String, Integer> userMasks = marketOfferOption.getMarketSpecifiedUsersGrantedActionsMask() == null ? new HashMap<>() : marketOfferOption.getMarketSpecifiedUsersGrantedActionsMask();
+        Map<String, Integer> userMasks = marketSaleInfo.getMarketSpecifiedUsersGrantedActionsMask() == null ? new HashMap<>() : marketSaleInfo.getMarketSpecifiedUsersGrantedActionsMask();
         int existingMask = userMasks.getOrDefault(buyerId, 0);
 
-        if ((existingMask & offer.getGrantedActionsMask()) == offer.getGrantedActionsMask()){
-            throw new ServiceException(ResourceError.MARKET_ORDER_ALREADY_EXISTS);
+        if ((existingMask & marketSaleTier.getGrantedActionsMask()) == marketSaleTier.getGrantedActionsMask()){
+            throw new ServiceException(ResourceError.MARKET_SALE_TIER_GRANT_ALREADY_EXISTS);
         }
 
         String traceId = IdUtil.fastSimpleUUID();
-        Integer paidPrice = offer.getPrice();
+        Integer paidPrice = marketSaleTier.getPrice();
 
-        List<ResourceAction> offerGrantedActions = ResourceAction.permissionCodeToActions(offer.getGrantedActionsMask());
+        List<ResourceAction> offerGrantedActions = ResourceAction.permissionCodeToActions(marketSaleTier.getGrantedActionsMask());
         String billMeta = "%s (%s)".formatted(resource.getResourceId(), offerGrantedActions.stream().map(Enum::name).toList().toString());
 
         // 请求交易
@@ -258,19 +258,19 @@ public class MarketServiceImpl implements IMarketService {
                 .buyerId(buyerId).sellerId(resource.getOwnerId())
                 .marketGroupId(marketGroupId)
                 .purchasedResourceId(resource.getResourceId())
-                .purchasedOfferVersion(marketOfferOption.getOfferVersion())
-                .buyerGrantedActionsMask(offer.getGrantedActionsMask()).buyerPaidPrice(paidPrice).build();
+                .purchasedOfferVersion(marketSaleInfo.getOfferVersion())
+                .buyerGrantedActionsMask(marketSaleTier.getGrantedActionsMask()).buyerPaidPrice(paidPrice).build();
         MarketOrderEntity saved = marketOrderRepository.save(order);
 
         // 添加权限
-        userMasks.put(buyerId, existingMask | offer.getGrantedActionsMask());
-        marketOfferOption.setMarketSpecifiedUsersGrantedActionsMask(userMasks);
+        userMasks.put(buyerId, existingMask | marketSaleTier.getGrantedActionsMask());
+        marketSaleInfo.setMarketSpecifiedUsersGrantedActionsMask(userMasks);
 
         resourceItemRepository.save(resource);
         resourceEventPublisher.publishAclRecalculateEvent(resource.getResourceId(), "MARKET_PURCHASE");
 
         log.info("market order created. orderId={} resourceId={} marketGroupId={} buyerId={} grantedActionsMask={} offerVersion={}",
-                saved.getOrderId(), resource.getResourceId(), marketGroupId, buyerId, offer.getGrantedActionsMask() , marketOfferOption.getOfferVersion());
+                saved.getOrderId(), resource.getResourceId(), marketGroupId, buyerId, marketSaleTier.getGrantedActionsMask() , marketSaleInfo.getOfferVersion());
         return BeanUtil.copyProperties(saved, MarketOrderResponse.class);
     }
 
@@ -286,17 +286,17 @@ public class MarketServiceImpl implements IMarketService {
         return pageR;
     }
 
-    private MarketOfferOption getMarketOfferOption(ResourceItemEntity resource, String marketGroupId) {
-        if (resource.getGroupBinds() == null) throw new ServiceException(ResourceError.MARKET_OFFER_NOT_FOUND);
+    private MarketSaleInfo getmarketSaleInfo(ResourceItemEntity resource, String marketGroupId) {
+        if (resource.getGroupBinds() == null) throw new ServiceException(ResourceError.MARKET_SALE_INFO_NOT_FOUND);
 
         GroupTagBind groupTagBind = resource.getGroupBinds().stream()
                 .filter(bind -> marketGroupId.equals(bind.getGroupId()))
-                .findFirst().orElseThrow(() -> new ServiceException(ResourceError.MARKET_OFFER_NOT_FOUND));
+                .findFirst().orElseThrow(() -> new ServiceException(ResourceError.MARKET_SALE_INFO_NOT_FOUND));
 
-        MarketOfferOption marketOfferOption = groupTagBind.getMarketOffer();
-        if (marketOfferOption == null || marketOfferOption.getMarketOfferList() == null || marketOfferOption.getMarketOfferList().isEmpty()) {
-            throw new ServiceException(ResourceError.MARKET_OFFER_NOT_FOUND);
+        MarketSaleInfo marketSaleInfo = groupTagBind.getMarketSaleInfo();
+        if (marketSaleInfo == null || marketSaleInfo.getMarketSaleTiers() == null || marketSaleInfo.getMarketSaleTiers().isEmpty()) {
+            throw new ServiceException(ResourceError.MARKET_SALE_INFO_NOT_FOUND);
         }
-        return marketOfferOption;
+        return marketSaleInfo;
     }
 }

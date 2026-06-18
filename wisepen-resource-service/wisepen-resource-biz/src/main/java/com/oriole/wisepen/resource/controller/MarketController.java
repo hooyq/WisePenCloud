@@ -6,8 +6,8 @@ import com.oriole.wisepen.common.core.domain.R;
 import com.oriole.wisepen.common.core.domain.enums.BusinessType;
 import com.oriole.wisepen.common.log.annotation.Log;
 import com.oriole.wisepen.common.security.annotation.CheckLogin;
-import com.oriole.wisepen.resource.domain.dto.req.MarketPublishOfferRequest;
-import com.oriole.wisepen.resource.domain.dto.req.MarketOffShelfOfferRequest;
+import com.oriole.wisepen.resource.domain.dto.req.MarketSalePublishRequest;
+import com.oriole.wisepen.resource.domain.dto.req.MarketSaleOffShelfRequest;
 import com.oriole.wisepen.resource.domain.dto.req.MarketPurchaseRequest;
 import com.oriole.wisepen.resource.domain.dto.res.MarketOrderResponse;
 import com.oriole.wisepen.resource.service.IMarketService;
@@ -41,7 +41,7 @@ public class MarketController {
             summary = "提交上架信息",
             description = """
                     - 用途：资源所有者提交或修改资源集市上架信息。
-                    - 请求：resourceId 指定资源；marketGroupId 指定集市组；tagIds 指定集市标签；offerVersion 指定本次审核版本；marketOfferList 指定售卖档位。
+                    - 请求：resourceId 指定资源；marketGroupId 指定集市组；tagIds 指定集市标签；offerVersion 指定本次审核版本；marketmarketSaleTiers 指定售卖档位。
                     - 约束：当前用户必须是资源所有者；目标小组必须是集市组；offerVersion 和售卖档位不能为空；预览权限和售卖权限禁止包含 EDIT。
                     - 处理：覆盖该集市组绑定的 tagIds 和整组 marketOffers；已发布或已下架的同 offerVersion 更新直接保持 PUBLISHED 并移除 override；新版本或未审核版本进入 PENDING 并设置 override=0。
                     - 失败：资源不存在 -> ResourceError.RESOURCE_NOT_FOUND；当前用户不是资源所有者 -> ResourceError.RESOURCE_PERMISSION_DENIED；目标小组不是集市组 -> ResourceError.MARKET_GROUP_REQUIRED；上架记录已封禁 -> ResourceError.MARKET_OFFER_BANNED；权限包含 EDIT -> ResourceError.MARKET_FORBIDDEN_ACTION_INCLUDED；售卖档位权限重复 -> ResourceError.MARKET_OFFER_ACTIONS_DUPLICATED。
@@ -49,12 +49,12 @@ public class MarketController {
                     """
     )
     @Log(title = "提交上架信息", businessType = BusinessType.INSERT)
-    @PostMapping("/publishOffer")
-    public R<Void> publishOffer(@Valid @RequestBody MarketPublishOfferRequest request) {
+    @PostMapping("/publishSaleInfo")
+    public R<Void> publishSaleInfo(@Valid @RequestBody MarketSalePublishRequest request) {
         String userId = SecurityContextHolder.getUserId().toString();
 
         resourceService.assertResourceOwner(request.getResourceId(), userId);
-        marketService.publishOffer(request);
+        marketService.publishSaleInfo(request);
         return R.ok();
     }
 
@@ -70,12 +70,12 @@ public class MarketController {
                     """
     )
     @Log(title = "下架资源", businessType = BusinessType.UPDATE)
-    @PostMapping("/offShelfOffer")
-    public R<Void> offShelfOffer(@Valid @RequestBody MarketOffShelfOfferRequest request) {
+    @PostMapping("/offShelfSaleInfo")
+    public R<Void> offShelfSaleInfo(@Valid @RequestBody MarketSaleOffShelfRequest request) {
         String userId = SecurityContextHolder.getUserId().toString();
 
         resourceService.assertResourceOwner(request.getResourceId(), userId);
-        marketService.offShelfOffer(request);
+        marketService.offShelfSaleInfo(request);
         return R.ok();
     }
 
@@ -91,11 +91,11 @@ public class MarketController {
                     """
     )
     @Log(title = "购买资源", businessType = BusinessType.INSERT)
-    @PostMapping("/purchase")
-    public R<MarketOrderResponse> purchase(@Valid @RequestBody MarketPurchaseRequest request) {
+    @PostMapping("/purchaseResource")
+    public R<MarketOrderResponse> purchaseResource(@Valid @RequestBody MarketPurchaseRequest request) {
         String userId = SecurityContextHolder.getUserId().toString();
 
-        return R.ok(marketService.purchase(request, userId));
+        return R.ok(marketService.purchaseResource(request, userId));
     }
 
     @Operation(

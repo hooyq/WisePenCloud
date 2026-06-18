@@ -7,9 +7,9 @@ import lombok.Getter;
 
 @Getter
 @AllArgsConstructor
-public enum MarketOfferStatus {
+public enum MarketSaleStatus {
     /** 已提交上架，待审核，不可购买 */
-    PENDING(1, "PENDING"),
+    PENDING_REVIEW(1, "PENDING_REVIEW"),
     /** 审核通过并上架，可购买 */
     PUBLISHED(2, "PUBLISHED"),
     /** 审核驳回，不可购买 */

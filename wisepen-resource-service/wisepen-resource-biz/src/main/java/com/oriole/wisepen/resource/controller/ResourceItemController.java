@@ -111,7 +111,7 @@ public class ResourceItemController {
             );
         } else {
             if (req.getGroupId().startsWith(ResourceConstants.MARKET_GROUP_PREFIX)) {
-                throw new ServiceException(ResourceError.CANNOT_BIND_MARKET_RESOURCE_DIRECTLY);
+                throw new ServiceException(ResourceError.CANNOT_BIND_MARKET_GROUP_TAG_DIRECTLY);
             }
             // 资源所有者或小组管理员可以修改资源挂载的小组标签
             GroupRoleType groupRole = SecurityContextHolder.getGroupRole(Long.parseLong(req.getGroupId()));

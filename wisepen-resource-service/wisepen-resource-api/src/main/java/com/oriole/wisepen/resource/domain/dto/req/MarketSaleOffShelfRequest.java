@@ -5,7 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 
 @Data
-public class MarketOffShelfOfferRequest {
+public class MarketSaleOffShelfRequest {
     @NotBlank(message = ResourceValidationMsg.RESOURCE_ID_NOT_BLANK)
     private String resourceId;
 

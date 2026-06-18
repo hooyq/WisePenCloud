@@ -13,15 +13,15 @@ import lombok.Data;
 import java.util.List;
 
 @Data
-public class MarketPublishOfferRequest {
+public class MarketSalePublishRequest {
 
     @Data
-    public static class MarketOfferInfo {
+    public static class MarketSaleTier {
         @NotEmpty
         private List<ResourceAction> grantedActions; // 购买资源的用户可以获得的权限掩码
 
-        @NotNull(message = ResourceValidationMsg.MARKET_PRICE_NOT_NULL)
-        @Min(value = 0, message = ResourceValidationMsg.MARKET_PRICE_INVALID)
+        @NotNull(message = ResourceValidationMsg.MARKET_SALE_TIER_PRICE_NOT_NULL)
+        @Min(value = 0, message = ResourceValidationMsg.MARKET_SALE_TIER_PRICE_INVALID)
         private Integer price; // 售卖价格
     }
 
@@ -41,10 +41,10 @@ public class MarketPublishOfferRequest {
     private List<ResourceAction> reviewActions;
 
     @Valid
-    @NotEmpty(message = ResourceValidationMsg.MARKET_OFFER_OPTION_REQUIRED)
-    private List<MarketOfferInfo> marketOfferList;
+    @NotEmpty(message = ResourceValidationMsg.MARKET_SALE_TIER_LIST_NOT_EMPTY)
+    private List<MarketSaleTier> marketSaleTiers;
 
-    @NotNull(message = ResourceValidationMsg.MARKET_VERSION_NOT_NULL)
-    @Min(value = 1, message = ResourceValidationMsg.MARKET_VERSION_INVALID)
+    @NotNull(message = ResourceValidationMsg.MARKET_SALE_VERSION_NOT_NULL)
+    @Min(value = 1, message = ResourceValidationMsg.MARKET_SALE_VERSION_INVALID)
     private Integer offerVersion;
 }

@@ -11,7 +11,7 @@ import com.oriole.wisepen.common.core.exception.ServiceException;
 import com.oriole.wisepen.resource.constant.ResourceConstants;
 import com.oriole.wisepen.resource.domain.ComputedGroupAcl;
 import com.oriole.wisepen.resource.domain.GroupTagBind;
-import com.oriole.wisepen.resource.domain.MarketOfferOption;
+import com.oriole.wisepen.resource.domain.MarketSaleInfo;
 import com.oriole.wisepen.resource.domain.dto.*;
 import com.oriole.wisepen.resource.domain.dto.req.ResourceForkRequest;
 import com.oriole.wisepen.resource.domain.dto.req.ResourceRenameRequest;
@@ -277,7 +277,7 @@ public class ResourceServiceImpl implements IResourceService {
             req.getOverrideGrantedActions().forEach((groupId, actions) -> {
                 // 要覆盖的小组必须是已经绑定了的
                 entity.getGroupBinds().stream().filter(groupTagBind -> groupTagBind.getGroupId().equals(groupId)).findFirst().ifPresent(groupTagBind ->{
-                    if (groupTagBind.getMarketOffer() != null){ // Market 组 override 只能由上架/审核流程维护
+                    if (groupTagBind.getMarketSaleInfo() != null){ // Market 组 override 只能由上架/审核流程维护
                         return;
                     }
                     // 传 null 代表清空该组的覆盖规则，走默认群组标签规则 (下同)
@@ -563,10 +563,10 @@ public class ResourceServiceImpl implements IResourceService {
                         // 如果移除后该组下没有任何 Tag
                         if (groupBind.getTagIds() == null || groupBind.getTagIds().isEmpty()) {
                             // 普通组清理空组
-                            if (groupBind.getMarketOffer() == null) {
+                            if (groupBind.getMarketSaleInfo() == null) {
                                 iterator.remove();
                             } else { // 集市组保留绑定，但走下架流程
-                                entity.offShelfMarketOffer(groupBind.getGroupId());
+                                entity.offShelfMarketSaleInfo(groupBind.getGroupId());
                             }
                         }
                     }
@@ -632,26 +632,26 @@ public class ResourceServiceImpl implements IResourceService {
                 // 获取资源级组权限覆盖
                 Integer overrideMask = bindEntity.getOverrideGrantedActionsMask() == null ? null : bindEntity.getOverrideGrantedActionsMask().get(groupId);
 
-                if (groupBind.getMarketOffer() != null) { // 当前组是 MARKET 组
+                if (groupBind.getMarketSaleInfo() != null) { // 当前组是 MARKET 组
                     ComputedGroupAcl computed = new ComputedGroupAcl();
-                    MarketOfferOption offers = groupBind.getMarketOffer(); // 售卖配置
+                    MarketSaleInfo marketSaleInfo = groupBind.getMarketSaleInfo(); // 售卖配置
 
                     int baseMask = 0;
                     if (overrideMask != null) { // 优先资源级组权限覆盖
                         // 不能存在 MARKET_FORBIDDEN_ACTIONS_MASK 中的权限
                         baseMask = overrideMask & ~MARKET_FORBIDDEN_ACTIONS_MASK;
-                    } else if (offers != null && offers.getStatus() == MarketOfferStatus.PUBLISHED) {
+                    } else if (marketSaleInfo != null && marketSaleInfo.getStatus() == MarketSaleStatus.PUBLISHED) {
                         // 如果不存在 ReviewActionsMask，以 MARKET_BASE_ACTIONS 为准
                         // 不能存在 MARKET_FORBIDDEN_ACTIONS_MASK 中的权限
-                        baseMask = (offers.getReviewActionsMask() != null ? offers.getReviewActionsMask() : MARKET_BASE_ACTIONS) & ~MARKET_FORBIDDEN_ACTIONS_MASK;
+                        baseMask = (marketSaleInfo.getReviewActionsMask() != null ? marketSaleInfo.getReviewActionsMask() : MARKET_BASE_ACTIONS) & ~MARKET_FORBIDDEN_ACTIONS_MASK;
                     }
                     computed.setBaseMask(baseMask);
 
-                    // offer 存在且状态为 PUBLISHED
-                    if (offers != null && offers.getStatus() == MarketOfferStatus.PUBLISHED && offers.getMarketSpecifiedUsersGrantedActionsMask() != null) {
+                    // marketSaleInfo 存在且状态为 PUBLISHED
+                    if (marketSaleInfo != null && marketSaleInfo.getStatus() == MarketSaleStatus.PUBLISHED && marketSaleInfo.getMarketSpecifiedUsersGrantedActionsMask() != null) {
                         // 遍历 MarketSpecifiedUsersGrantedActionsMask，将这些用户和对应权限添加到 UserMasks 列表中
                         int userBaseMask = baseMask;
-                        offers.getMarketSpecifiedUsersGrantedActionsMask().forEach((uid, mask) ->
+                        marketSaleInfo.getMarketSpecifiedUsersGrantedActionsMask().forEach((uid, mask) ->
                                 // 不能存在 MARKET_FORBIDDEN_ACTIONS_MASK 中的权限
                                 computed.getUserMasks().put(uid, (userBaseMask | mask) & ~MARKET_FORBIDDEN_ACTIONS_MASK));
                     }
@@ -765,7 +765,7 @@ public class ResourceServiceImpl implements IResourceService {
 
             // 用户是组管理员/拥有者，有全部权限
             if (userRoleInThisGroup == GroupRoleType.ADMIN || userRoleInThisGroup == GroupRoleType.OWNER) {
-                if (groupBind.getMarketOffer() != null) {
+                if (groupBind.getMarketSaleInfo() != null) {
                     // 不能存在 MARKET_FORBIDDEN_ACTIONS_MASK 中的权限
                     return logResolved(dto, new ResourceCheckPermissionResDTO(ResourceAccessRole.GROUP_ADMIN,
                             new HashSet<>(Collections.singleton(groupBind.getGroupId())),
@@ -779,16 +779,16 @@ public class ResourceServiceImpl implements IResourceService {
 
             Integer overrideMask = entity.getOverrideGrantedActionsMask() == null ? null : entity.getOverrideGrantedActionsMask().get(groupId);
 
-            if (groupBind.getMarketOffer() != null) { // 当前组是 MARKET 组
-                MarketOfferOption offers = groupBind.getMarketOffer();
+            if (groupBind.getMarketSaleInfo() != null) { // 当前组是 MARKET 组
+                MarketSaleInfo marketSaleInfo = groupBind.getMarketSaleInfo();
 
                 // 未携带资源 targetVersion 时不能使用 MARKET 组鉴权，跳过
-                if (dto.getTargetVersion() == null || !dto.getTargetVersion().equals(offers.getOfferVersion())){
+                if (dto.getTargetVersion() == null || !dto.getTargetVersion().equals(marketSaleInfo.getOfferVersion())){
                     continue;
                 }
 
-                // MARKET 组资源 Offer 状态不是 PUBLISHED，跳过
-                if (offers.getStatus() != MarketOfferStatus.PUBLISHED) {
+                // MARKET 组资源 marketSaleInfo 状态不是 PUBLISHED，跳过
+                if (marketSaleInfo.getStatus() != MarketSaleStatus.PUBLISHED) {
                     continue;
                 }
 
@@ -797,9 +797,9 @@ public class ResourceServiceImpl implements IResourceService {
                     resolvedMarketMask = overrideMask;
                 } else {
                     // 如果不存在 ReviewActionsMask，以 MARKET_BASE_ACTIONS 为准
-                    resolvedMarketMask = offers.getReviewActionsMask() != null ? offers.getReviewActionsMask() : MARKET_BASE_ACTIONS;
-                    if (offers.getMarketSpecifiedUsersGrantedActionsMask() != null) {
-                        resolvedMarketMask |= offers.getMarketSpecifiedUsersGrantedActionsMask().getOrDefault(dto.getUserId().toString(), 0);
+                    resolvedMarketMask = marketSaleInfo.getReviewActionsMask() != null ? marketSaleInfo.getReviewActionsMask() : MARKET_BASE_ACTIONS;
+                    if (marketSaleInfo.getMarketSpecifiedUsersGrantedActionsMask() != null) {
+                        resolvedMarketMask |= marketSaleInfo.getMarketSpecifiedUsersGrantedActionsMask().getOrDefault(dto.getUserId().toString(), 0);
                     }
                 }
                 // 不能存在 MARKET_FORBIDDEN_ACTIONS_MASK 中的权限
