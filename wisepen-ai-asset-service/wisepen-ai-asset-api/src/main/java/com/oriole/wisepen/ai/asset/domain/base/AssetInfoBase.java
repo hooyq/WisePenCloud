@@ -14,7 +14,7 @@ public class AssetInfoBase {
     private String name;
     private String path;
     private String objectKey;
-    private AssetResourceType skillAssetResourceType;
+    private AssetResourceType assetResourceType;
     private AssetUploadStatus uploadStatus;
     private Long size;
 }

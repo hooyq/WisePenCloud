@@ -110,7 +110,7 @@ public abstract class VersionServiceImpl<VT extends VersionBundleBaseEntity<VT>,
                     .id(IdUtil.fastSimpleUUID())
                     .path(sourceAsset.getPath())
                     .name(sourceAsset.getName())
-                    .skillAssetResourceType(sourceAsset.getSkillAssetResourceType())
+                    .assetResourceType(sourceAsset.getAssetResourceType())
                     .objectKey(copied.getObjectKey())
                     .size(copied.getSize())
                     .uploadStatus(AssetUploadStatus.AVAILABLE)
@@ -217,12 +217,12 @@ public abstract class VersionServiceImpl<VT extends VersionBundleBaseEntity<VT>,
                 .findFirst().orElse(null);
         if (asset == null) {
             asset = AssetInfoBase.builder().id(IdUtil.fastSimpleUUID())
-                    .path(path).name(name).skillAssetResourceType(assetResourceType)
+                    .path(path).name(name).assetResourceType(assetResourceType)
                     .uploadStatus(AssetUploadStatus.UPLOADING)
                     .build();
             draft.getAssets().add(asset);
         } else {
-            asset.setSkillAssetResourceType(assetResourceType);
+            asset.setAssetResourceType(assetResourceType);
         }
         return asset;
     }
