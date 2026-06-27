@@ -60,12 +60,12 @@ public class NoteServiceImpl implements INoteService {
         List<Long> authors = new ArrayList<>();
         authors.add(Long.valueOf(userId));
 
-        NoteInfoEntity doc = NoteInfoEntity.builder()
+        NoteInfoEntity infoEntity = NoteInfoEntity.builder()
                 .resourceId(resourceId)
                 .lastUpdatedAt(LocalDateTime.now())
                 .authors(authors)
                 .build();
-        noteDocumentRepository.save(doc);
+        noteDocumentRepository.save(infoEntity);
         return resourceId;
     }
 
