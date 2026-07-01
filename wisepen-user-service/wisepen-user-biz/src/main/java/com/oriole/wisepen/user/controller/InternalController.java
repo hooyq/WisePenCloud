@@ -1,12 +1,17 @@
 package com.oriole.wisepen.user.controller;
 
 import com.oriole.wisepen.common.core.domain.R;
+import com.oriole.wisepen.common.core.domain.enums.BusinessType;
+import com.oriole.wisepen.common.log.annotation.Log;
 import com.oriole.wisepen.user.api.domain.base.GroupDisplayBase;
 import com.oriole.wisepen.user.api.domain.base.UserDisplayBase;
+import com.oriole.wisepen.user.api.domain.dto.req.MessagePublishRequest;
 import com.oriole.wisepen.user.api.domain.dto.req.WalletSettleCoinTradeRequest;
+import com.oriole.wisepen.user.api.feign.RemoteUserMessageService;
 import com.oriole.wisepen.user.api.feign.RemoteUserService;
 import com.oriole.wisepen.user.api.feign.RemoteWalletService;
 import com.oriole.wisepen.user.service.IGroupService;
+import com.oriole.wisepen.user.service.IMessageService;
 import com.oriole.wisepen.user.service.IUserService;
 import com.oriole.wisepen.user.service.IWalletService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -24,15 +29,16 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 
-@Tag(name = "内部 - 用户", description = "供其他微服务查询用户与小组展示信息，并结算钱包交易")
+@Tag(name = "内部 - 用户", description = "供其他微服务查询用户与小组展示信息、发布站内消息并结算钱包交易")
 @RestController
 @RequestMapping("/internal")
 @RequiredArgsConstructor
-public class InternalController implements RemoteUserService, RemoteWalletService {
+public class InternalController implements RemoteUserService, RemoteWalletService, RemoteUserMessageService {
 
     private final IUserService userService;
     private final IGroupService groupService;
     private final IWalletService walletService;
+    private final IMessageService messageService;
 
     @Override
     @Operation(
@@ -83,6 +89,25 @@ public class InternalController implements RemoteUserService, RemoteWalletServic
     @PostMapping("/user/wallet/settleTrade")
     public R<Void> settleCoinTrade(@RequestBody @Valid WalletSettleCoinTradeRequest req) {
         walletService.settleCoinTrade(req);
+        return R.ok();
+    }
+
+    @Override
+    @Operation(
+            summary = "内部发布站内消息",
+            description = """
+                    - 用途：供业务微服务向指定用户或全员投递站内消息，由用户服务维护用户收件箱状态。
+                    - 请求：deliveryScope=DIRECT 时 receiverUserIds 指定接收用户；deliveryScope=ALL_USERS 时 receiverUserIds 可为空且 messageType 必须为 SYSTEM；title、content 描述消息内容；sourceService 和 bizTraceId 用于业务幂等；jumpUrl 和 extra 为可选展示扩展。
+                    - 约束：调用方必须来自可信服务链路；DIRECT 消息必须提供接收用户；ALL_USERS 仅支持系统消息；sourceService 与 bizTraceId 组合应在调用方业务内唯一。
+                    - 处理：按 sourceService 和 bizTraceId 幂等创建消息主体；DIRECT 消息批量补齐接收用户收件箱记录；ALL_USERS 消息只创建消息主体，用户查询消息中心时再批量同步个人收件箱；不发送邮件、短信或实时 WebSocket 推送。
+                    - 失败：DIRECT 消息未提供接收用户 -> UserError.MESSAGE_RECEIVER_REQUIRED；投递范围与消息类型组合无效 -> UserError.MESSAGE_DELIVERY_SCOPE_INVALID；幂等键已存在但投递范围或消息类型不一致 -> UserError.MESSAGE_PUBLISH_CONFLICT。
+                    - 响应：成功时返回空结果。
+                    """
+    )
+    @Log(title = "内部发布站内消息", businessType = BusinessType.INSERT, isSaveResponseData = false)
+    @PostMapping("/user/message/publishMessage")
+    public R<Void> publishMessage(@RequestBody @Valid MessagePublishRequest req) {
+        messageService.publishMessage(req);
         return R.ok();
     }
 }

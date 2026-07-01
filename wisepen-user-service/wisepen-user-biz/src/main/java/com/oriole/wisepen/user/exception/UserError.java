@@ -53,7 +53,12 @@ public enum UserError implements IResult {
     WALLET_VOUCHER_EXPIRED(3831, new ResultKey(BusinessDomain.USER, UserSubject.VOUCHER, ErrorReason.EXPIRED),"TOKEN 点卡已过期"),
     // Coin相关异常
     WALLET_COIN_INSUFFICIENT(3911, new ResultKey(BusinessDomain.USER, UserSubject.WALLET_COIN, ErrorReason.BELOW_LOWER_BOUND), "金币余额不足"),
-    WALLET_COIN_CHANGE_FAILED(3921, new ResultKey(BusinessDomain.USER, UserSubject.WALLET_COIN, ErrorReason.FAILED), "金币变动失败");
+    WALLET_COIN_CHANGE_FAILED(3921, new ResultKey(BusinessDomain.USER, UserSubject.WALLET_COIN, ErrorReason.FAILED), "金币变动失败"),
+
+    // 用户消息相关异常
+    MESSAGE_NOT_FOUND(31061, new ResultKey(BusinessDomain.USER, UserSubject.MESSAGE, ErrorReason.NOT_FOUND), "消息不存在"),
+    MESSAGE_RECEIVER_REQUIRED(31062, new ResultKey(BusinessDomain.USER, UserSubject.MESSAGE, ErrorReason.REQUIRED_MISSING), "接收用户不能为空"),
+    MESSAGE_DELIVERY_SCOPE_INVALID(31063, new ResultKey(BusinessDomain.USER, UserSubject.MESSAGE, ErrorReason.INVALID), "消息投递范围无效");
 
     private final Integer code;
     private final ResultKey key;
