@@ -5,6 +5,10 @@ import com.oriole.wisepen.document.api.domain.mq.DocumentReadyMessage;
 import com.oriole.wisepen.note.api.domain.enums.VersionType;
 import com.oriole.wisepen.note.api.domain.mq.NoteSnapshotMessage;
 import com.oriole.wisepen.resource.service.ISearchSyncService;
+import io.github.springwolf.core.asyncapi.annotations.AsyncListener;
+import io.github.springwolf.core.asyncapi.annotations.AsyncMessage;
+import io.github.springwolf.core.asyncapi.annotations.AsyncOperation;
+import io.github.springwolf.plugins.kafka.asyncapi.annotations.KafkaAsyncOperationBinding;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -22,6 +26,13 @@ public class ResourceContentConsumer {
     private final ObjectMapper objectMapper;
 
     @KafkaListener(topics = TOPIC_DOCUMENT_READY, groupId = "wisepen-document-ready-group")
+    @AsyncListener(operation = @AsyncOperation(
+            channelName = TOPIC_DOCUMENT_READY,
+            description = "消费文档就绪事件，将文档解析后的文本内容同步到资源搜索索引。",
+            payloadType = DocumentReadyMessage.class,
+            message = @AsyncMessage(name = "DocumentReadyMessage", title = "文档就绪事件")
+    ))
+    @KafkaAsyncOperationBinding(groupId = "wisepen-document-ready-group")
     public void onDocumentReady(DocumentReadyMessage message) throws Exception {
         log.info("document ready event received. topic={} resourceId={} version={} contentLength={}",
                 TOPIC_DOCUMENT_READY, message.getResourceId(), message.getVersion(), message.getContent()!=null ? message.getContent().length() : 0);
@@ -43,6 +54,13 @@ public class ResourceContentConsumer {
                     "value.deserializer=org.apache.kafka.common.serialization.StringDeserializer"
             }
     )
+    @AsyncListener(operation = @AsyncOperation(
+            channelName = TOPIC_NOTE_SNAPSHOT,
+            description = "消费协同笔记快照事件，将完整快照的纯文本内容同步到资源搜索索引。",
+            payloadType = NoteSnapshotMessage.class,
+            message = @AsyncMessage(name = "NoteSnapshotMessage", title = "笔记快照事件")
+    ))
+    @KafkaAsyncOperationBinding(groupId = "wisepen-note-snapshot-group")
     public void onSnapshot(String payload) throws Exception {
         // 从非Java微服务（NodeJS）的发布者订阅，使用objectMapper显式转换
         NoteSnapshotMessage msg = objectMapper.readValue(payload, NoteSnapshotMessage.class);
