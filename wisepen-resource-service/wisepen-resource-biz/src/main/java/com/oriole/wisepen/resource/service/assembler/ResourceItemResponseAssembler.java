@@ -17,6 +17,7 @@ import com.oriole.wisepen.resource.enums.MarketSaleStatus;
 import com.oriole.wisepen.resource.enums.ResourceAccessRole;
 import com.oriole.wisepen.resource.enums.ResourceAction;
 import com.oriole.wisepen.resource.repository.TagRepository;
+import com.oriole.wisepen.user.api.domain.base.GroupDisplayBase;
 import com.oriole.wisepen.user.api.domain.base.UserDisplayBase;
 import com.oriole.wisepen.user.api.feign.RemoteUserService;
 import lombok.AllArgsConstructor;
@@ -75,6 +76,8 @@ public class ResourceItemResponseAssembler {
         }
 
         Map<Long, UserDisplayBase> ownerInfoMap = fetchOwnersInfo(entities);
+        Map<Long, GroupDisplayBase> overrideGroupInfoMap = fetchOverrideGroupInfo(entities, currentUserId);
+        Map<Long, UserDisplayBase> specifiedUserInfoMap = fetchSpecifiedUserInfo(entities, currentUserId);
         // ResourceID : List<GroupTagBind>
         Map<String, List<GroupTagBind>> accessibleGroupBindsMap = getAccessibleGroupBindsMap(entities, currentUserId, groupRoles);
         Set<String> allTagIds = accessibleGroupBindsMap.values().stream().flatMap(List::stream).map(GroupTagBind::getTagIds).flatMap(List::stream).collect(Collectors.toSet());
@@ -95,17 +98,26 @@ public class ResourceItemResponseAssembler {
             List<Map<String, MarketSaleInfoResponse>> marketSaleInfos = resolveMarketSaleInfo(entity.getGroupBinds());
 
             // 仅所有者有此字段
-            if (currentUserId.equals(entity.getOwnerId())) {
+            if (Objects.equals(currentUserId, entity.getOwnerId())) {
                 // 处理权限掩码解包
                 if (entity.getOverrideGrantedActionsMask() != null) {
-                    Map<String, List<ResourceAction>> overrideGrantedActions = new HashMap<>();
-                    entity.getOverrideGrantedActionsMask().forEach((groupId, mask) ->
-                            overrideGrantedActions.put(groupId, ResourceAction.permissionCodeToActions(mask)));
+                    List<ResourceItemResponse.GroupGrantedActionsResponse> overrideGrantedActions =
+                            entity.getOverrideGrantedActionsMask().entrySet().stream().map(entry ->
+                                    ResourceItemResponse.GroupGrantedActionsResponse.builder()
+                                        .groupId(entry.getKey())
+                                        .groupInfo(overrideGroupInfoMap.get(Long.valueOf(entry.getKey())))
+                                        .grantedActions(ResourceAction.permissionCodeToActions(entry.getValue())).build()
+                            ).toList();
                     response.setOverrideGrantedActions(overrideGrantedActions);
                 }
                 if (entity.getSpecifiedUsersGrantedActionsMask() != null) {
-                    Map<String, List<ResourceAction>> specifiedUsersGrantedActions = new HashMap<>();
-                    entity.getSpecifiedUsersGrantedActionsMask().forEach((userId, mask) -> specifiedUsersGrantedActions.put(userId, ResourceAction.permissionCodeToActions(mask)));
+                    List<ResourceItemResponse.SpecifiedUserGrantedActionsResponse> specifiedUsersGrantedActions =
+                            entity.getSpecifiedUsersGrantedActionsMask().entrySet().stream().map(entry ->
+                                    ResourceItemResponse.SpecifiedUserGrantedActionsResponse.builder()
+                                            .userId(entry.getKey())
+                                            .userInfo(specifiedUserInfoMap.get(Long.valueOf(entry.getKey())))
+                                            .grantedActions(ResourceAction.permissionCodeToActions(entry.getValue())).build()
+                            ).toList();
                     response.setSpecifiedUsersGrantedActions(specifiedUsersGrantedActions);
                 }
                 // 提供全部 MarketSaleInfo 信息
@@ -142,6 +154,38 @@ public class ResourceItemResponseAssembler {
             return fetched == null ? Collections.emptyMap() : fetched;
         } catch (Exception e) {
             log.warn("owner info batch degraded. ownerCount={}", ownerIds.size(), e);
+            return Collections.emptyMap();
+        }
+    }
+
+    // 远程批量请求小组信息
+    private Map<Long, GroupDisplayBase> fetchOverrideGroupInfo(List<ResourceItemEntity> entities, String currentUserId) {
+        List<Long> groupIds = entities.stream()
+                .filter(entity -> Objects.equals(currentUserId, entity.getOwnerId()))
+                .map(ResourceItemEntity::getOverrideGrantedActionsMask).flatMap(mask -> mask.keySet().stream())
+                .map(Long::valueOf).distinct().toList();
+        if (groupIds.isEmpty()) return Collections.emptyMap();
+        try {
+            Map<Long, GroupDisplayBase> fetched = remoteUserService.getGroupDisplayInfo(groupIds).getData();
+            return fetched == null ? Collections.emptyMap() : fetched;
+        } catch (Exception e) {
+            log.warn("override group info batch degraded. groupCount={}", groupIds.size(), e);
+            return Collections.emptyMap();
+        }
+    }
+
+    // 远程批量请求特殊权限用户信息
+    private Map<Long, UserDisplayBase> fetchSpecifiedUserInfo(List<ResourceItemEntity> entities, String currentUserId) {
+        List<Long> userIds = entities.stream()
+                .filter(entity -> Objects.equals(currentUserId, entity.getOwnerId()))
+                .map(ResourceItemEntity::getSpecifiedUsersGrantedActionsMask).flatMap(mask -> mask.keySet().stream())
+                .map(Long::valueOf).distinct().toList();
+        if (userIds.isEmpty()) return Collections.emptyMap();
+        try {
+            Map<Long, UserDisplayBase> fetched = remoteUserService.getUserDisplayInfo(userIds).getData();
+            return fetched == null ? Collections.emptyMap() : fetched;
+        } catch (Exception e) {
+            log.warn("specified user info batch degraded. userCount={}", userIds.size(), e);
             return Collections.emptyMap();
         }
     }
