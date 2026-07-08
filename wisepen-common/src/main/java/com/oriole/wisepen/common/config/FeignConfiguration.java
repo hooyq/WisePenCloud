@@ -1,9 +1,12 @@
 package com.oriole.wisepen.common.config;
 
+import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.databind.JsonDeserializer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.oriole.wisepen.common.web.interceptor.FeignRequestInterceptor;
 import feign.RequestInterceptor;
 import feign.codec.Decoder;
@@ -18,6 +21,12 @@ import org.springframework.cloud.openfeign.support.SpringEncoder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
+import org.springframework.lang.NonNull;
+
+import java.io.IOException;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 
 @Configuration
 @EnableFeignClients(basePackages = "com.oriole.wisepen")
@@ -33,9 +42,21 @@ public class FeignConfiguration {
         return new FeignRequestInterceptor(fromSource);
     }
 
-    private ObjectMapper feignObjectMapper() {
+    private @NonNull ObjectMapper feignObjectMapper() {
         ObjectMapper objectMapper = new ObjectMapper();
         objectMapper.findAndRegisterModules();
+        SimpleModule timeModule = new SimpleModule();
+        timeModule.addDeserializer(LocalDateTime.class, new JsonDeserializer<LocalDateTime>() {
+            @Override
+            public LocalDateTime deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
+                long timestamp = p.getValueAsLong();
+                if (timestamp > 0) {
+                    return LocalDateTime.ofInstant(Instant.ofEpochMilli(timestamp), ZoneId.systemDefault());
+                }
+                return null;
+            }
+        });
+        objectMapper.registerModule(timeModule);
         // 禁用将日期序列化为时间戳
         objectMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
         objectMapper.disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
